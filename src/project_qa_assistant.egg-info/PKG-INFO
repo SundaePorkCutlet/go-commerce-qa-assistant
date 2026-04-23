@@ -1,0 +1,53 @@
+Metadata-Version: 2.4
+Name: project-qa-assistant
+Version: 0.1.0
+Summary: Code-aware RAG assistant for go-commerce
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: pydantic>=2.8.0
+Requires-Dist: python-dotenv>=1.0.1
+Requires-Dist: typer>=0.12.3
+Requires-Dist: rich>=13.7.1
+Provides-Extra: dev
+Requires-Dist: pytest>=8.2.0; extra == "dev"
+Requires-Dist: pytest-cov>=5.0.0; extra == "dev"
+Requires-Dist: ruff>=0.5.0; extra == "dev"
+Requires-Dist: mypy>=1.10.0; extra == "dev"
+
+# Project Q&A Assistant
+
+Code-aware RAG assistant for the `go-commerce` repository.
+
+## Goals
+
+- Answer codebase questions with **file-grounded evidence**
+- Separate ingestion/indexing from query-time generation
+- Keep private interview materials out of indexing scope
+
+## Project Layout
+
+- `src/pqa/` - application source
+- `scripts/` - CLI entrypoints for indexing and asking
+- `prompts/` - system and answer templates
+- `eval/` - evaluation dataset and reports
+- `tests/` - unit tests
+- `data/` - local runtime artifacts (`raw/`, `index/`, `cache/`)
+
+## Quick Start
+
+1. Create virtualenv and install:
+   - `python -m venv .venv`
+   - `source .venv/bin/activate`
+   - `pip install -e .[dev]`
+2. Copy env:
+   - `cp .env.example .env`
+3. Build index:
+   - `python scripts/index_once.py`
+4. Ask question:
+   - `python scripts/ask.py "ORDERFC 멱등성 토큰은 어디서 검증돼?"`
+
+## Safety Rules
+
+- Private files like `INTERVIEW_PREP*` are excluded by default.
+- Answers must include evidence paths.
+- If confidence is low, assistant should say so explicitly.

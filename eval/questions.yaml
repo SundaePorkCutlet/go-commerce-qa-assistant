@@ -1,0 +1,9 @@
+questions:
+  - q: "ORDERFC에서 멱등성 토큰 검증은 어디서 하나?"
+    expected_paths:
+      - "ORDERFC/cmd/order/usecase/usecase.go"
+      - "ORDERFC/cmd/order/repository/database.go"
+
+  - q: "PAYMENTFC audit daily report 집계는 어디 구현돼?"
+    expected_paths:
+      - "PAYMENTFC/cmd/payment/repository/audit_log.go"

@@ -1,0 +1,169 @@
+from __future__ import annotations
+
+import math
+import re
+from collections import Counter
+from pathlib import Path
+from statistics import mean
+
+from pqa.models import Chunk
+
+
+TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_./:-]*|[가-힣]{2,}")
+
+
+def tokenize(text: str) -> list[str]:
+    return [t.lower() for t in TOKEN_RE.findall(text)]
+
+
+def expand_query_tokens(tokens: set[str]) -> set[str]:
+    expanded = set(tokens)
+    if "멱등" in expanded or "멱등성" in expanded:
+        expanded.update({"idempotency"})
+    if "트레이싱" in expanded:
+        expanded.update({"tracing", "trace", "context"})
+    if "감사로그" in expanded or "감사" in expanded:
+        expanded.update({"audit", "log"})
+    return expanded
+
+
+def tf(tokens: list[str]) -> Counter[str]:
+    return Counter(tokens)
+
+
+def cosine_sim(a: Counter[str], b: Counter[str]) -> float:
+    dot = sum(v * b.get(k, 0) for k, v in a.items())
+    na = math.sqrt(sum(v * v for v in a.values()))
+    nb = math.sqrt(sum(v * v for v in b.values()))
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
+
+
+def bm25_rerank(query_tokens: set[str], candidates: list[tuple[float, Chunk]], top_k: int) -> list[Chunk]:
+    if not candidates:
+        return []
+
+    docs = [tokenize(c.text) for _, c in candidates]
+    avgdl = mean(len(d) for d in docs) if docs else 1.0
+    k1 = 1.5
+    b = 0.75
+
+    # document frequency for query terms only
+    df: dict[str, int] = {}
+    for term in query_tokens:
+        df[term] = 0
+    for d in docs:
+        uniq = set(d)
+        for term in query_tokens:
+            if term in uniq:
+                df[term] += 1
+
+    n_docs = len(docs)
+    reranked: list[tuple[float, Chunk]] = []
+    for i, (base_score, chunk) in enumerate(candidates):
+        terms = docs[i]
+        tf_terms = Counter(terms)
+        dl = max(1, len(terms))
+
+        bm25 = 0.0
+        for term in query_tokens:
+            f = tf_terms.get(term, 0)
+            if f == 0:
+                continue
+            dfi = df.get(term, 0)
+            idf = math.log((n_docs - dfi + 0.5) / (dfi + 0.5) + 1.0)
+            denom = f + k1 * (1 - b + b * (dl / avgdl))
+            bm25 += idf * ((f * (k1 + 1)) / denom)
+
+        # blend vector-like score + bm25 score
+        final_score = (base_score * 0.55) + (bm25 * 0.45)
+        reranked.append((final_score, chunk))
+
+    reranked.sort(key=lambda x: x[0], reverse=True)
+    return [chunk for _, chunk in reranked[:top_k]]
+
+
+def search(
+    query: str,
+    chunks: list[Chunk],
+    top_k: int = 5,
+    service_filter: str | None = None,
+    path_prefix: str | None = None,
+) -> list[Chunk]:
+    qtokens = expand_query_tokens(set(tokenize(query)))
+    qvec = tf(list(qtokens))
+    scored: list[tuple[float, Chunk]] = []
+    require_idempotency_signal = "idempotency" in qtokens
+    service_hint = None
+    implementation_query = any(
+        (t.startswith("어디") or t in {"구현", "검증", "where", "implemented"})
+        for t in qtokens
+    )
+
+    for svc in ("orderfc", "paymentfc", "productfc", "userfc"):
+        if svc in qtokens:
+            service_hint = svc.upper()
+            break
+    normalized_service_filter = service_filter.upper() if service_filter else None
+    normalized_path_prefix = path_prefix.replace("\\", "/") if path_prefix else None
+
+    for c in chunks:
+        if normalized_service_filter and c.service != normalized_service_filter:
+            continue
+        if normalized_path_prefix and not c.path.startswith(normalized_path_prefix):
+            continue
+
+        text_lower = c.text.lower()
+        path_lower = c.path.lower()
+
+        if require_idempotency_signal:
+            if not (
+                "idempotency" in text_lower
+                or "idempotency" in path_lower
+            ):
+                continue
+
+        cvec = tf(tokenize(c.text))
+        score = cosine_sim(qvec, cvec)
+        if score <= 0:
+            continue
+
+        path = c.path
+        suffix = Path(path).suffix.lower()
+        if implementation_query and suffix != ".go":
+            continue
+
+        # Prefer backend source files over docs/config for code Q&A.
+        if suffix == ".go":
+            score *= 1.35
+        elif suffix in {".md", ".yaml", ".yml", ".json"}:
+            score *= 0.9
+
+        if "/prometheus/" in path.lower() or "/promtail/" in path.lower():
+            score *= 0.5
+
+        # Prefer primary service directories.
+        if path.startswith(("ORDERFC/", "PAYMENTFC/", "PRODUCTFC/", "USERFC/")):
+            score *= 1.25
+        if service_hint and path.startswith(service_hint + "/"):
+            score *= 1.5
+
+        # Strong boost when question includes implementation keywords.
+        impl_keywords = {"idempotency", "token", "kafka", "tracing", "grpc", "audit", "repository"}
+        if qtokens & impl_keywords:
+            if suffix == ".go":
+                score *= 1.2
+
+        matched_key_terms = 0
+        for key in ("idempotency", "repository", "usecase", "handler"):
+            if key in qtokens and (key in text_lower or key in path_lower):
+                matched_key_terms += 1
+        if matched_key_terms > 0:
+            score *= 1.0 + (0.35 * matched_key_terms)
+
+        scored.append((score, c))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    candidate_pool = scored[: max(top_k * 6, 20)]
+    return bm25_rerank(qtokens, candidate_pool, top_k=top_k)
+
