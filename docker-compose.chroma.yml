@@ -1,0 +1,10 @@
+version: "3.8"
+
+services:
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: go-commerce-qa-chroma
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/index/chroma-server:/chroma/chroma

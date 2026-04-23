@@ -8,6 +8,12 @@ Code-aware RAG assistant for the `go-commerce` repository.
 - Separate ingestion/indexing from query-time generation
 - Keep private interview materials out of indexing scope
 
+## Core Retrieval Design (Why It Matters)
+
+- Go files are chunked by **symbol units** (`func` / `type` / method), not only fixed-length text.
+- Each chunk stores `symbol_hint` and line range metadata (`start_line`, `end_line`).
+- This improves "어디 구현돼?" style questions because retrieval can prioritize exact symbols.
+
 ## Project Layout
 
 - `src/pqa/` - application source
@@ -37,6 +43,29 @@ Code-aware RAG assistant for the `go-commerce` repository.
 - Private files like `INTERVIEW_PREP*` are excluded by default.
 - Answers must include evidence paths.
 - If confidence is low, assistant should say so explicitly.
+
+## ChromaDB (Vector Store)
+
+This project now runs in **Chroma-only mode** (no JSONL fallback).
+Default mode uses local persistent Chroma at `data/index/chroma`.
+ONNX embedding cache is stored under `data/cache` (workspace-local).
+Current MVP uses a local hash embedding function by default (offline, deterministic).
+
+- Index with Chroma upsert:
+  - `python scripts/index_once.py`
+- Ask with Chroma retrieval:
+  - `python scripts/ask.py "ORDERFC에서 CheckOutOrder는 어디 구현돼?" --service ORDERFC`
+
+`chunks.jsonl` is not required at runtime. You can treat deployment as stateless app + vector DB.
+
+If you want a separate Chroma server via Docker:
+
+- `docker compose -f docker-compose.chroma.yml up -d`
+- set `.env`:
+  - `USE_CHROMA=true`
+  - `CHROMA_MODE=http`
+  - `CHROMA_HOST=localhost`
+  - `CHROMA_PORT=8000`
 
 ## Retrieval Precision Tuning Notes
 

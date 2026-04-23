@@ -5,8 +5,8 @@ from rich import print
 
 from pqa.answerer import build_answer
 from pqa.config import Settings
-from pqa.indexer import read_index
 from pqa.retriever import search
+from pqa.vector_store import query_chunks
 
 app = typer.Typer(add_completion=False)
 
@@ -22,8 +22,20 @@ def main(
     ),
 ) -> None:
     settings = Settings.load()
-    chunks = read_index(settings.index_path)
-    evidence = search(question, chunks, top_k=5, service_filter=service, path_prefix=path_prefix)
+    if not settings.use_chroma:
+        raise RuntimeError(
+            "Chroma-only mode: USE_CHROMA must be true. "
+            "JSONL fallback is removed for production-style deployment."
+        )
+
+    candidates = query_chunks(settings, question, top_k=60)
+    evidence = search(
+        question,
+        candidates,
+        top_k=5,
+        service_filter=service,
+        path_prefix=path_prefix,
+    )
     answer = build_answer(question, evidence)
     print(answer)
 
