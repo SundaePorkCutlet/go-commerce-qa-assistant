@@ -73,6 +73,8 @@ def _to_metadata(chunk: Chunk) -> dict[str, Any]:
         metadata["service"] = chunk.service
     if chunk.symbol_hint:
         metadata["symbol_hint"] = chunk.symbol_hint
+    if chunk.kind:
+        metadata["kind"] = chunk.kind
     if chunk.start_line is not None:
         metadata["start_line"] = int(chunk.start_line)
     if chunk.end_line is not None:
@@ -109,6 +111,7 @@ def query_chunks(settings: Settings, question: str, top_k: int = 8) -> list[Chun
                 text=doc,
                 service=meta.get("service"),
                 symbol_hint=meta.get("symbol_hint"),
+                kind=meta.get("kind"),
                 start_line=meta.get("start_line"),
                 end_line=meta.get("end_line"),
             )
@@ -134,6 +137,7 @@ def list_chunks(settings: Settings, limit: int = 5000) -> list[Chunk]:
                 text=doc,
                 service=meta.get("service"),
                 symbol_hint=meta.get("symbol_hint"),
+                kind=meta.get("kind"),
                 start_line=meta.get("start_line"),
                 end_line=meta.get("end_line"),
             )

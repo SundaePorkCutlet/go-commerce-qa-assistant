@@ -11,6 +11,10 @@ from pqa.models import Chunk
 
 TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_./:-]*|[가-힣]{2,}")
 SYMBOL_QUERY_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+DEFINITION_QUERY_HINT_RE = re.compile(
+    r"(어디\s*(구현|정의|선언)|구현\s*어디|정의\s*어디|선언\s*어디|where\s+(implemented|defined))",
+    re.IGNORECASE,
+)
 
 
 def tokenize(text: str) -> list[str]:
@@ -26,6 +30,67 @@ def extract_symbol_queries(query: str) -> set[str]:
         if any(ch.isupper() for ch in token) or "_" in token:
             symbols.add(token.lower())
     return symbols
+
+
+def is_definition_lookup_query(query: str) -> bool:
+    if DEFINITION_QUERY_HINT_RE.search(query):
+        return True
+    qtokens = tokenize(query)
+    has_loc_word = any(t.startswith("어디") or t == "where" for t in qtokens)
+    has_def_word = any(t in {"구현", "정의", "선언", "implemented", "defined"} for t in qtokens)
+    return has_loc_word and has_def_word
+
+
+def normalize_symbol_name(symbol: str) -> str:
+    base = symbol.lower()
+    if "#part" in base:
+        base = base.split("#part", 1)[0]
+    if "." in base:
+        base = base.split(".")[-1]
+    return base.strip()
+
+
+def definition_first_candidates(
+    query: str,
+    chunks: list[Chunk],
+    service_filter: str | None = None,
+    path_prefix: str | None = None,
+    top_k: int = 5,
+) -> list[Chunk]:
+    if not is_definition_lookup_query(query):
+        return []
+    symbol_queries = extract_symbol_queries(query)
+    if not symbol_queries:
+        return []
+
+    normalized_service_filter = service_filter.upper() if service_filter else None
+    normalized_path_prefix = path_prefix.replace("\\", "/") if path_prefix else None
+    target_symbols = {normalize_symbol_name(s) for s in symbol_queries}
+
+    exact_defs: list[Chunk] = []
+    symbol_refs: list[Chunk] = []
+    docs: list[Chunk] = []
+    for c in chunks:
+        if normalized_service_filter and c.service != normalized_service_filter:
+            continue
+        if normalized_path_prefix and not c.path.startswith(normalized_path_prefix):
+            continue
+        symbol_norm = normalize_symbol_name(c.symbol_hint or "")
+        kind = (c.kind or "").lower()
+
+        if symbol_norm in target_symbols and kind in {"func_def", "method_def", "type_def"}:
+            exact_defs.append(c)
+            continue
+        if symbol_norm in target_symbols:
+            symbol_refs.append(c)
+            continue
+        docs.append(c)
+
+    if exact_defs:
+        return exact_defs[:top_k]
+    if symbol_refs:
+        return symbol_refs[:top_k]
+    return docs[:top_k]
 
 
 def expand_query_tokens(tokens: set[str]) -> set[str]:
@@ -181,6 +246,13 @@ def search(
                 score *= 1.8
             if "idempotency" in qtokens and "idempotency" in s_hint:
                 score *= 1.4
+        kind = (c.kind or "").lower()
+        if kind in {"func_def", "method_def", "type_def"}:
+            score *= 1.25
+        elif kind == "call_site":
+            score *= 0.9
+        elif kind in {"doc_section", "comment"}:
+            score *= 0.8
 
         scored.append((score, c))
     scored.sort(key=lambda x: x[0], reverse=True)

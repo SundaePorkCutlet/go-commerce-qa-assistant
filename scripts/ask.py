@@ -5,7 +5,9 @@ from rich import print
 
 from pqa.answerer import build_answer
 from pqa.config import Settings
+from pqa.retriever import definition_first_candidates
 from pqa.retriever import extract_symbol_queries
+from pqa.retriever import is_definition_lookup_query
 from pqa.retriever import search
 from pqa.vector_store import list_chunks
 from pqa.vector_store import query_chunks
@@ -71,6 +73,7 @@ def main(
             "JSONL fallback is removed for production-style deployment."
         )
 
+    definition_mode = is_definition_lookup_query(question)
     candidates = query_chunks(settings, question, top_k=60)
     symbol_queries = extract_symbol_queries(question)
     for symbol in symbol_queries:
@@ -84,21 +87,33 @@ def main(
         seen_ids.add(c.id)
         deduped.append(c)
     candidates = deduped
-    evidence = search(
-        question,
-        candidates,
-        top_k=5,
-        service_filter=service,
-        path_prefix=path_prefix,
-    )
+    evidence = []
     full_chunks = None
+    if definition_mode and symbol_queries:
+        full_chunks = list_chunks(settings)
+        evidence = definition_first_candidates(
+            question,
+            full_chunks,
+            service_filter=service,
+            path_prefix=path_prefix,
+            top_k=5,
+        )
+    if not evidence:
+        evidence = search(
+            question,
+            candidates,
+            top_k=5,
+            service_filter=service,
+            path_prefix=path_prefix,
+        )
     if symbol_queries:
         # Force symbol-first evidence when explicit code symbols are in question.
-        full_chunks = list_chunks(settings)
+        if full_chunks is None:
+            full_chunks = list_chunks(settings)
         symbol_hits = _symbol_priority_matches(
             full_chunks, symbol_queries, service=service, path_prefix=path_prefix, limit=5
         )
-        if symbol_hits:
+        if symbol_hits and not definition_mode:
             evidence = symbol_hits
 
     if not evidence and symbol_queries:
@@ -121,7 +136,14 @@ def main(
             normalized_prefix = path_prefix.replace("\\", "/")
             raw = [c for c in raw if c.path.startswith(normalized_prefix)]
         evidence = raw[:5]
-    answer = build_answer(question, evidence, settings)
+    primary_symbol = next(iter(symbol_queries), None)
+    answer = build_answer(
+        question,
+        evidence,
+        settings,
+        definition_mode=definition_mode,
+        target_symbol=primary_symbol,
+    )
     print(answer)
 
 

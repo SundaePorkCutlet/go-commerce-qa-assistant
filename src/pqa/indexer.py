@@ -27,6 +27,12 @@ GO_SYMBOL_RE = re.compile(
 )
 
 
+def infer_chunk_kind(rel_path: str, part: str) -> str:
+    if rel_path.endswith(".go"):
+        return "call_site"
+    return "doc_section"
+
+
 def should_index(rel_path: str) -> bool:
     if any(p.search(rel_path) for p in EXCLUDE_PATTERNS):
         return False
@@ -58,7 +64,7 @@ def chunk_text(text: str, size: int = 1200, overlap: int = 150) -> list[str]:
 
 def build_go_symbol_chunks(rel_path: str, content: str, service: str | None) -> list[Chunk]:
     lines = content.replace("\r\n", "\n").split("\n")
-    decls: list[tuple[int, str]] = []
+    decls: list[tuple[int, str, str]] = []
     for idx, line in enumerate(lines):
         m = GO_SYMBOL_RE.match(line)
         if not m:
@@ -67,15 +73,17 @@ def build_go_symbol_chunks(rel_path: str, content: str, service: str | None) -> 
             recv = (m.group("recv") or "").strip()
             func_name = m.group("func")
             symbol = f"{recv}.{func_name}" if recv else func_name
+            kind = "method_def" if recv else "func_def"
         else:
             symbol = m.group("type") or "type"
-        decls.append((idx, symbol))
+            kind = "type_def"
+        decls.append((idx, symbol, kind))
 
     if not decls:
         return []
 
     chunks: list[Chunk] = []
-    for i, (start_idx, symbol) in enumerate(decls):
+    for i, (start_idx, symbol, kind) in enumerate(decls):
         # Include directly attached comment block above declaration.
         chunk_start = start_idx
         j = start_idx - 1
@@ -101,6 +109,7 @@ def build_go_symbol_chunks(rel_path: str, content: str, service: str | None) -> 
                     text=part,
                     service=service,
                     symbol_hint=symbol_hint,
+                    kind=kind,
                     start_line=chunk_start + 1,
                     end_line=end_idx,
                 )
@@ -137,6 +146,7 @@ def build_chunks(repo_root: Path) -> list[Chunk]:
                     text=part,
                     service=service,
                     symbol_hint=None,
+                    kind=infer_chunk_kind(rel, part),
                     start_line=None,
                     end_line=None,
                 )
