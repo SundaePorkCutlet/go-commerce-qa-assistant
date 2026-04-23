@@ -19,7 +19,15 @@ def build_answer(question: str, evidence: list[Chunk]) -> str:
     for i, chunk in enumerate(evidence, start=1):
         preview = " ".join(chunk.text.strip().split())
         preview = (preview[:160] + "...") if len(preview) > 160 else preview
-        lines.append(f"- [{i}] `{chunk.path}` ({chunk.service or 'unknown'}) -> {preview}")
+        meta = []
+        if chunk.service:
+            meta.append(chunk.service)
+        if chunk.symbol_hint:
+            meta.append(f"symbol={chunk.symbol_hint}")
+        if chunk.start_line and chunk.end_line:
+            meta.append(f"L{chunk.start_line}-L{chunk.end_line}")
+        meta_text = ", ".join(meta) if meta else "unknown"
+        lines.append(f"- [{i}] `{chunk.path}` ({meta_text}) -> {preview}")
 
     lines.append("")
     lines.append("주의: 현재 MVP는 키워드/유사도 검색 기반이며, 최종 확정 전 원본 파일 확인이 필요합니다.")

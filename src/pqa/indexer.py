@@ -21,6 +21,11 @@ EXCLUDE_PATTERNS = [
     re.compile(r"agent-transcripts"),
 ]
 
+GO_SYMBOL_RE = re.compile(
+    r"^\s*func\s*(?:\((?P<recv>[^)]*)\)\s*)?(?P<func>[A-Za-z_][A-Za-z0-9_]*)\s*\(|"
+    r"^\s*type\s+(?P<type>[A-Za-z_][A-Za-z0-9_]*)\s+"
+)
+
 
 def should_index(rel_path: str) -> bool:
     if any(p.search(rel_path) for p in EXCLUDE_PATTERNS):
@@ -51,6 +56,58 @@ def chunk_text(text: str, size: int = 1200, overlap: int = 150) -> list[str]:
     return chunks
 
 
+def build_go_symbol_chunks(rel_path: str, content: str, service: str | None) -> list[Chunk]:
+    lines = content.replace("\r\n", "\n").split("\n")
+    decls: list[tuple[int, str]] = []
+    for idx, line in enumerate(lines):
+        m = GO_SYMBOL_RE.match(line)
+        if not m:
+            continue
+        if m.group("func"):
+            recv = (m.group("recv") or "").strip()
+            func_name = m.group("func")
+            symbol = f"{recv}.{func_name}" if recv else func_name
+        else:
+            symbol = m.group("type") or "type"
+        decls.append((idx, symbol))
+
+    if not decls:
+        return []
+
+    chunks: list[Chunk] = []
+    for i, (start_idx, symbol) in enumerate(decls):
+        # Include directly attached comment block above declaration.
+        chunk_start = start_idx
+        j = start_idx - 1
+        while j >= 0 and (lines[j].strip().startswith("//") or lines[j].strip() == ""):
+            chunk_start = j
+            j -= 1
+
+        end_idx = decls[i + 1][0] if i + 1 < len(decls) else len(lines)
+        symbol_block = "\n".join(lines[chunk_start:end_idx]).strip()
+        if not symbol_block:
+            continue
+
+        parts = chunk_text(symbol_block, size=1800, overlap=120)
+        for part_idx, part in enumerate(parts):
+            symbol_hint = symbol if len(parts) == 1 else f"{symbol}#part{part_idx + 1}"
+            cid = hashlib.sha1(
+                f"{rel_path}:{symbol_hint}:{chunk_start + 1}:{end_idx}:{part[:64]}".encode("utf-8")
+            ).hexdigest()
+            chunks.append(
+                Chunk(
+                    id=cid,
+                    path=rel_path,
+                    text=part,
+                    service=service,
+                    symbol_hint=symbol_hint,
+                    start_line=chunk_start + 1,
+                    end_line=end_idx,
+                )
+            )
+    return chunks
+
+
 def build_chunks(repo_root: Path) -> list[Chunk]:
     results: list[Chunk] = []
     for path in repo_root.rglob("*"):
@@ -63,6 +120,14 @@ def build_chunks(repo_root: Path) -> list[Chunk]:
             content = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
+        service = detect_service(rel)
+
+        if path.suffix.lower() == ".go":
+            symbol_chunks = build_go_symbol_chunks(rel, content, service)
+            if symbol_chunks:
+                results.extend(symbol_chunks)
+                continue
+
         for i, part in enumerate(chunk_text(content)):
             cid = hashlib.sha1(f"{rel}:{i}:{part[:64]}".encode("utf-8")).hexdigest()
             results.append(
@@ -70,8 +135,10 @@ def build_chunks(repo_root: Path) -> list[Chunk]:
                     id=cid,
                     path=rel,
                     text=part,
-                    service=detect_service(rel),
+                    service=service,
                     symbol_hint=None,
+                    start_line=None,
+                    end_line=None,
                 )
             )
     return results

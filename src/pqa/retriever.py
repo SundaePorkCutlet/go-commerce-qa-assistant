@@ -10,10 +10,22 @@ from pqa.models import Chunk
 
 
 TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_./:-]*|[가-힣]{2,}")
+SYMBOL_QUERY_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def tokenize(text: str) -> list[str]:
     return [t.lower() for t in TOKEN_RE.findall(text)]
+
+
+def extract_symbol_queries(query: str) -> set[str]:
+    symbols: set[str] = set()
+    for token in SYMBOL_QUERY_RE.findall(query):
+        # Keep likely code symbols (camel/Pascal/snake with enough length)
+        if len(token) < 4:
+            continue
+        if any(ch.isupper() for ch in token) or "_" in token:
+            symbols.add(token.lower())
+    return symbols
 
 
 def expand_query_tokens(tokens: set[str]) -> set[str]:
@@ -92,6 +104,7 @@ def search(
     path_prefix: str | None = None,
 ) -> list[Chunk]:
     qtokens = expand_query_tokens(set(tokenize(query)))
+    symbol_queries = extract_symbol_queries(query)
     qvec = tf(list(qtokens))
     scored: list[tuple[float, Chunk]] = []
     require_idempotency_signal = "idempotency" in qtokens
@@ -161,6 +174,13 @@ def search(
                 matched_key_terms += 1
         if matched_key_terms > 0:
             score *= 1.0 + (0.35 * matched_key_terms)
+
+        if c.symbol_hint:
+            s_hint = c.symbol_hint.lower()
+            if any(sym in s_hint for sym in symbol_queries):
+                score *= 1.8
+            if "idempotency" in qtokens and "idempotency" in s_hint:
+                score *= 1.4
 
         scored.append((score, c))
     scored.sort(key=lambda x: x[0], reverse=True)
