@@ -115,3 +115,28 @@ def query_chunks(settings: Settings, question: str, top_k: int = 8) -> list[Chun
         )
     return chunks
 
+
+def list_chunks(settings: Settings, limit: int = 5000) -> list[Chunk]:
+    collection = _get_collection(settings)
+    result = collection.get(limit=limit, include=["documents", "metadatas"])
+
+    docs = result.get("documents", [])
+    ids = result.get("ids", [])
+    metas = result.get("metadatas", [])
+
+    chunks: list[Chunk] = []
+    for cid, doc, meta in zip(ids, docs, metas):
+        meta = meta or {}
+        chunks.append(
+            Chunk(
+                id=cid,
+                path=str(meta.get("path", "unknown")),
+                text=doc,
+                service=meta.get("service"),
+                symbol_hint=meta.get("symbol_hint"),
+                start_line=meta.get("start_line"),
+                end_line=meta.get("end_line"),
+            )
+        )
+    return chunks
+

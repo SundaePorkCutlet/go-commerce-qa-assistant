@@ -8,6 +8,13 @@ from pydantic import Field
 import os
 
 
+def _resolve_env_path(raw: str, *, base_dir: Path) -> Path:
+    path = Path(raw)
+    if path.is_absolute():
+        return path.resolve()
+    return (base_dir / path).resolve()
+
+
 class Settings(BaseModel):
     repo_root: Path = Field(default_factory=lambda: Path(__file__).resolve().parents[4])
     data_dir: Path = Field(default_factory=lambda: Path(__file__).resolve().parents[2] / "data")
@@ -29,20 +36,20 @@ class Settings(BaseModel):
         project_root = Path(__file__).resolve().parents[2]
         load_dotenv(dotenv_path=project_root / ".env")
         return Settings(
-            repo_root=Path(
-                os.getenv("REPO_ROOT", str(Path(__file__).resolve().parents[4]))
-            ).resolve(),
-            data_dir=Path(
-                os.getenv("DATA_DIR", str(Path(__file__).resolve().parents[2] / "data"))
-            ).resolve(),
+            repo_root=_resolve_env_path(
+                os.getenv("REPO_ROOT", str(Path(__file__).resolve().parents[4])),
+                base_dir=project_root,
+            ),
+            data_dir=_resolve_env_path(
+                os.getenv("DATA_DIR", "./data"),
+                base_dir=project_root,
+            ),
             use_chroma=os.getenv("USE_CHROMA", "true").lower() in {"1", "true", "yes", "on"},
             chroma_mode=os.getenv("CHROMA_MODE", "persistent").strip().lower(),
-            chroma_path=Path(
-                os.getenv(
-                    "CHROMA_PATH",
-                    str(Path(__file__).resolve().parents[2] / "data/index/chroma"),
-                )
-            ).resolve(),
+            chroma_path=_resolve_env_path(
+                os.getenv("CHROMA_PATH", "./data/index/chroma"),
+                base_dir=project_root,
+            ),
             chroma_collection=os.getenv("CHROMA_COLLECTION", "go-commerce-code-chunks"),
             chroma_host=os.getenv("CHROMA_HOST", "localhost"),
             chroma_port=int(os.getenv("CHROMA_PORT", "8000")),
