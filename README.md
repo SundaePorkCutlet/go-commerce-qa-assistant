@@ -114,6 +114,16 @@ Intent router env (rule + optional LLM classifier):
   - keep `8001` and `8000` private (not exposed externally)
 - For custom domain, set nginx `server_name` to your domain (e.g. `hongjunho.xyz`).
 
+### Resume/Portfolio PDFs
+
+- Large PDF binaries can be served without storing them in git history.
+- Preferred: host files on object storage/CDN and set:
+  - `VITE_RESUME_URL`
+  - `VITE_PORTFOLIO_URL`
+- Fallback: place local files at:
+  - `apps/web/public/docs/resume.pdf`
+  - `apps/web/public/docs/portfolio.pdf`
+
 If you want a separate Chroma server via Docker:
 
 - `docker compose -f docker-compose.chroma.yml up -d`

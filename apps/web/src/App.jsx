@@ -9,11 +9,11 @@ const INTRO_LINES = [
 const PDF_ASSETS = {
   resume: {
     label: "이력서 보기",
-    path: "/docs/resume.pdf",
+    path: import.meta.env.VITE_RESUME_URL || "/docs/resume.pdf",
   },
   portfolio: {
     label: "포트폴리오 보기",
-    path: "/docs/portfolio.pdf",
+    path: import.meta.env.VITE_PORTFOLIO_URL || "/docs/portfolio.pdf",
   },
 };
 const GITHUB_URL = "https://github.com/SundaePorkCutlet/go-commerce";

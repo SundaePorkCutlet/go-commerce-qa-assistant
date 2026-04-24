@@ -10,3 +10,4 @@ data/index/
 data/cache/
 apps/web/node_modules/
 apps/web/dist/
+apps/web/public/docs/*.pdf
