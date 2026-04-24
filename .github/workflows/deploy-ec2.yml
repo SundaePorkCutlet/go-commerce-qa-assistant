@@ -1,0 +1,37 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -e
+            cd ~/go-commerce
+            git fetch origin
+            git reset --hard origin/master
+            git submodule sync --recursive
+            git submodule update --init --recursive
+
+            cd tools/project-qa-assistant
+            docker compose -f docker-compose.app.yml build web api
+            docker compose -f docker-compose.app.yml up -d
+
+            # Run indexer only when corpus changes are expected.
+            # docker compose -f docker-compose.app.yml --profile tools run --rm indexer
+
+            docker compose -f docker-compose.app.yml ps
+            curl -fsS http://localhost/ > /dev/null
