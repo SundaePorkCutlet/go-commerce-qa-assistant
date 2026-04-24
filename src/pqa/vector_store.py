@@ -5,6 +5,7 @@ import os
 import re
 
 import chromadb
+import numpy as np
 from chromadb.api.models.Collection import Collection
 
 from pqa.config import Settings
@@ -32,13 +33,13 @@ class LocalHashEmbeddingFunction:
     def name(self) -> str:
         return "local_hash_embedding_v1"
 
-    def __call__(self, input: list[str]) -> list[list[float]]:
-        vectors: list[list[float]] = []
+    def __call__(self, input: list[str]) -> list[np.ndarray]:
+        vectors: list[np.ndarray] = []
         for text in input:
             vec = [0.0] * self.dim
             tokens = [t.lower() for t in self.token_re.findall(text)]
             if not tokens:
-                vectors.append(vec)
+                vectors.append(np.array(vec, dtype=np.float32))
                 continue
             for tok in tokens:
                 idx = hash(tok) % self.dim
@@ -46,10 +47,10 @@ class LocalHashEmbeddingFunction:
             norm = sum(v * v for v in vec) ** 0.5
             if norm > 0:
                 vec = [v / norm for v in vec]
-            vectors.append(vec)
+            vectors.append(np.array(vec, dtype=np.float32))
         return vectors
 
-    def embed_query(self, input: list[str]) -> list[list[float]]:
+    def embed_query(self, input: list[str]) -> list[np.ndarray]:
         return self.__call__(input)
 
 

@@ -8,3 +8,5 @@ __pycache__/
 .env
 data/index/
 data/cache/
+apps/web/node_modules/
+apps/web/dist/

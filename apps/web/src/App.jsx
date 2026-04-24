@@ -1,0 +1,137 @@
+import { useEffect, useMemo, useState } from "react";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001";
+const INTRO_LINES = [
+  "안녕하세요 백엔드 개발자 홍준호입니다.",
+  "제 프로젝트에 관해 궁금하신 것들을 질문해주세요.",
+];
+
+function useTypingLines(lines, speedMs = 30, lineDelayMs = 350) {
+  const [currentLine, setCurrentLine] = useState(0);
+  const [currentText, setCurrentText] = useState("");
+  const [doneLines, setDoneLines] = useState([]);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (currentLine >= lines.length) {
+      setDone(true);
+      return;
+    }
+    const target = lines[currentLine];
+    if (currentText.length < target.length) {
+      const t = setTimeout(() => {
+        setCurrentText(target.slice(0, currentText.length + 1));
+      }, speedMs);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(() => {
+      setDoneLines((prev) => [...prev, target]);
+      setCurrentLine((prev) => prev + 1);
+      setCurrentText("");
+    }, lineDelayMs);
+    return () => clearTimeout(t);
+  }, [currentLine, currentText, lines, speedMs, lineDelayMs]);
+
+  return { doneLines, currentText, done };
+}
+
+export default function App() {
+  const [question, setQuestion] = useState("");
+  const [service, setService] = useState("ORDERFC");
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const { doneLines, currentText, done } = useTypingLines(INTRO_LINES);
+
+  const placeholders = useMemo(
+    () => [
+      "예) ORDERFC에서 CheckOutOrder는 어디 구현돼?",
+      "예) ORDERFC 핵심 로직 흐름은 어디서 하나요?",
+      "예) 멱등성 검증은 어디서 처리되나요?",
+    ],
+    []
+  );
+
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    const q = question.trim();
+    if (!q || loading) return;
+    setLoading(true);
+    setMessages((prev) => [...prev, { role: "user", text: q }]);
+    setQuestion("");
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q, service }),
+      });
+      const data = await res.json();
+      const botText = data?.answer ?? "응답이 비어 있습니다.";
+      setMessages((prev) => [...prev, { role: "assistant", text: botText, mode: data?.mode }]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: `요청 실패: ${String(err)}` },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <main className="page">
+      <section className="hero">
+        {doneLines.map((line) => (
+          <p key={line} className="hero-line">
+            {line}
+          </p>
+        ))}
+        {!done && (
+          <p className="hero-line">
+            {currentText}
+            <span className="cursor">|</span>
+          </p>
+        )}
+      </section>
+
+      <section className="chat-card">
+        <div className="chat-header">
+          <h2>Project Q&A Chat</h2>
+          <select value={service} onChange={(e) => setService(e.target.value)}>
+            <option value="ORDERFC">ORDERFC</option>
+            <option value="PAYMENTFC">PAYMENTFC</option>
+            <option value="PRODUCTFC">PRODUCTFC</option>
+            <option value="USERFC">USERFC</option>
+          </select>
+        </div>
+
+        <div className="messages">
+          {messages.length === 0 && (
+            <div className="hint">
+              {placeholders.map((p) => (
+                <p key={p}>{p}</p>
+              ))}
+            </div>
+          )}
+          {messages.map((m, idx) => (
+            <div key={`${m.role}-${idx}`} className={`msg ${m.role}`}>
+              {m.mode ? <div className="mode-tag">mode: {m.mode}</div> : null}
+              <pre>{m.text}</pre>
+            </div>
+          ))}
+        </div>
+
+        <form onSubmit={onSubmit} className="composer">
+          <input
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="프로젝트 질문을 입력하세요..."
+          />
+          <button type="submit" disabled={loading}>
+            {loading ? "질문 중..." : "질문하기"}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}

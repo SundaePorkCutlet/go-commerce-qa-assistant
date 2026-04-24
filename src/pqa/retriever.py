@@ -12,7 +12,11 @@ from pqa.models import Chunk
 TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_./:-]*|[가-힣]{2,}")
 SYMBOL_QUERY_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 DEFINITION_QUERY_HINT_RE = re.compile(
-    r"(어디\s*(구현|정의|선언)|구현\s*어디|정의\s*어디|선언\s*어디|where\s+(implemented|defined))",
+    r"(정의|선언|method|symbol|where\s+(defined|declared)|definition|declaration)",
+    re.IGNORECASE,
+)
+CORE_LOGIC_QUERY_HINT_RE = re.compile(
+    r"(핵심\s*로직|실제\s*처리|검증|상태\s*변경|흐름|어디서\s*하나요)",
     re.IGNORECASE,
 )
 
@@ -33,12 +37,14 @@ def extract_symbol_queries(query: str) -> set[str]:
 
 
 def is_definition_lookup_query(query: str) -> bool:
-    if DEFINITION_QUERY_HINT_RE.search(query):
+    return bool(DEFINITION_QUERY_HINT_RE.search(query))
+
+
+def is_core_logic_query(query: str) -> bool:
+    if CORE_LOGIC_QUERY_HINT_RE.search(query):
         return True
     qtokens = tokenize(query)
-    has_loc_word = any(t.startswith("어디") or t == "where" for t in qtokens)
-    has_def_word = any(t in {"구현", "정의", "선언", "implemented", "defined"} for t in qtokens)
-    return has_loc_word and has_def_word
+    return any(t in {"핵심", "로직", "처리", "검증", "상태", "흐름"} for t in qtokens)
 
 
 def normalize_symbol_name(symbol: str) -> str:

@@ -8,6 +8,36 @@ from pqa.config import Settings
 from pqa.models import Chunk
 
 
+def _mode_label(definition_mode: bool, core_logic_mode: bool) -> str:
+    if definition_mode:
+        return "definition"
+    if core_logic_mode:
+        return "core-logic"
+    return "general"
+
+
+def _format_with_mode(content: str, definition_mode: bool, core_logic_mode: bool) -> str:
+    return f"(mode: {_mode_label(definition_mode, core_logic_mode)})\n{content}"
+
+
+def _has_core_logic_pair(evidence: list[Chunk]) -> bool:
+    has_handler = any("/handler/" in c.path.lower() for c in evidence)
+    has_core = any(
+        ("/usecase/" in c.path.lower()) or ("/service/" in c.path.lower()) for c in evidence
+    )
+    return has_handler and has_core
+
+
+def _build_core_logic_insufficient_answer() -> str:
+    return (
+        "답변:\n"
+        "핵심 로직 흐름을 확정하기 위한 근거가 부족합니다.\n"
+        "현재 근거에서 handler 진입점과 usecase/service 핵심 로직 근거를 동시에 확보하지 못했습니다.\n\n"
+        "근거:\n"
+        "- handler + usecase/service 페어 근거가 필요합니다."
+    )
+
+
 def _build_definition_fallback_answer(target_symbol: str | None, evidence: list[Chunk]) -> str:
     symbol = target_symbol or "(unknown)"
     def_chunks = [c for c in evidence if (c.kind or "") in {"func_def", "method_def", "type_def"}]
@@ -35,7 +65,13 @@ def _build_definition_fallback_answer(target_symbol: str | None, evidence: list[
     return "\n".join(lines)
 
 
-def _build_fallback_answer(question: str, evidence: list[Chunk], definition_mode: bool, target_symbol: str | None) -> str:
+def _build_fallback_answer(
+    question: str,
+    evidence: list[Chunk],
+    definition_mode: bool,
+    core_logic_mode: bool,
+    target_symbol: str | None,
+) -> str:
     if definition_mode:
         return _build_definition_fallback_answer(target_symbol, evidence)
     if not evidence:
@@ -66,6 +102,11 @@ def _build_fallback_answer(question: str, evidence: list[Chunk], definition_mode
         lines.append(f"- [{i}] `{chunk.path}` ({meta_text}) -> {preview}")
 
     lines.append("")
+    if core_logic_mode:
+        has_handler = any("/handler/" in c.path.lower() for c in evidence)
+        has_core = any(("/usecase/" in c.path.lower()) or ("/service/" in c.path.lower()) for c in evidence)
+        if has_handler and has_core:
+            lines.append("보강: 진입점은 handler이며, 핵심 비즈니스 로직은 usecase/service 계층에서 처리됩니다.")
     lines.append("주의: 현재 MVP는 키워드/유사도 검색 기반이며, 최종 확정 전 원본 파일 확인이 필요합니다.")
     return "\n".join(lines)
 
@@ -104,12 +145,26 @@ def _build_llm_answer(
     evidence: list[Chunk],
     settings: Settings,
     definition_mode: bool,
+    core_logic_mode: bool,
     target_symbol: str | None,
 ) -> str:
+    if core_logic_mode and not _has_core_logic_pair(evidence):
+        return _format_with_mode(
+            _build_core_logic_insufficient_answer(), definition_mode, core_logic_mode
+        )
+
     if not settings.openai_api_key:
-        return _build_fallback_answer(question, evidence, definition_mode, target_symbol)
+        return _format_with_mode(
+            _build_fallback_answer(question, evidence, definition_mode, core_logic_mode, target_symbol),
+            definition_mode,
+            core_logic_mode,
+        )
     if not evidence:
-        return _build_fallback_answer(question, evidence, definition_mode, target_symbol)
+        return _format_with_mode(
+            _build_fallback_answer(question, evidence, definition_mode, core_logic_mode, target_symbol),
+            definition_mode,
+            core_logic_mode,
+        )
 
     client = OpenAI(api_key=settings.openai_api_key)
     system_prompt = _load_system_prompt()
@@ -128,6 +183,12 @@ def _build_llm_answer(
             "    symbol: ...\n"
             "    kind: func_def|method_def|type_def\n"
             "    lines: Lxx-Lyy\n"
+        )
+    elif core_logic_mode:
+        extra_rules = (
+            "- 이 질문은 핵심 처리 흐름 질의다.\n"
+            "- handler는 진입점, 핵심 비즈니스 로직은 usecase/service로 구분해서 설명하라.\n"
+            "- 가능하면 두 계층의 근거 파일을 함께 제시하라.\n"
         )
 
     user_prompt = (
@@ -153,11 +214,21 @@ def _build_llm_answer(
         )
         message = response.choices[0].message.content
         if not message:
-            return _build_fallback_answer(question, evidence, definition_mode, target_symbol)
-        return message.strip()
+            return _format_with_mode(
+                _build_fallback_answer(
+                    question, evidence, definition_mode, core_logic_mode, target_symbol
+                ),
+                definition_mode,
+                core_logic_mode,
+            )
+        return _format_with_mode(message.strip(), definition_mode, core_logic_mode)
     except Exception:
         # Keep the app available even when network/API is temporarily unavailable.
-        return _build_fallback_answer(question, evidence, definition_mode, target_symbol)
+        return _format_with_mode(
+            _build_fallback_answer(question, evidence, definition_mode, core_logic_mode, target_symbol),
+            definition_mode,
+            core_logic_mode,
+        )
 
 
 def build_answer(
@@ -165,7 +236,10 @@ def build_answer(
     evidence: list[Chunk],
     settings: Settings,
     definition_mode: bool = False,
+    core_logic_mode: bool = False,
     target_symbol: str | None = None,
 ) -> str:
-    return _build_llm_answer(question, evidence, settings, definition_mode, target_symbol)
+    return _build_llm_answer(
+        question, evidence, settings, definition_mode, core_logic_mode, target_symbol
+    )
 

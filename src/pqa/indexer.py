@@ -19,6 +19,8 @@ EXCLUDE_PATTERNS = [
     re.compile(r"^tools/project-qa-assistant/data/"),
     re.compile(r"INTERVIEW_PREP"),
     re.compile(r"agent-transcripts"),
+    re.compile(r"_pb\.go$"),
+    re.compile(r"/pb/"),
 ]
 
 GO_SYMBOL_RE = re.compile(
