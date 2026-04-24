@@ -6,7 +6,7 @@ const INTRO_LINES = [
   "제 프로젝트에 관해 궁금하신 것들을 질문해주세요.",
 ];
 
-function useTypingLines(lines, speedMs = 30, lineDelayMs = 350) {
+function useTypingLines(lines, speedMs = 30, lineDelayMs = 350, replayDelayMs = 10000) {
   const [currentLine, setCurrentLine] = useState(0);
   const [currentText, setCurrentText] = useState("");
   const [doneLines, setDoneLines] = useState([]);
@@ -15,7 +15,13 @@ function useTypingLines(lines, speedMs = 30, lineDelayMs = 350) {
   useEffect(() => {
     if (currentLine >= lines.length) {
       setDone(true);
-      return;
+      const t = setTimeout(() => {
+        setCurrentLine(0);
+        setCurrentText("");
+        setDoneLines([]);
+        setDone(false);
+      }, replayDelayMs);
+      return () => clearTimeout(t);
     }
     const target = lines[currentLine];
     if (currentText.length < target.length) {
@@ -30,7 +36,7 @@ function useTypingLines(lines, speedMs = 30, lineDelayMs = 350) {
       setCurrentText("");
     }, lineDelayMs);
     return () => clearTimeout(t);
-  }, [currentLine, currentText, lines, speedMs, lineDelayMs]);
+  }, [currentLine, currentText, lines, speedMs, lineDelayMs, replayDelayMs]);
 
   return { doneLines, currentText, done };
 }
@@ -85,17 +91,18 @@ export default function App() {
   return (
     <main className="page">
       <section className="hero">
-        {doneLines.map((line) => (
+        {doneLines.map((line, idx) => (
           <p key={line} className="hero-line">
             {line}
+            {done && idx === doneLines.length - 1 ? <span className="cursor">|</span> : null}
           </p>
         ))}
-        {!done && (
+        {!done ? (
           <p className="hero-line">
             {currentText}
             <span className="cursor">|</span>
           </p>
-        )}
+        ) : null}
       </section>
 
       <section className="chat-card">
@@ -124,6 +131,16 @@ export default function App() {
               <pre>{m.text}</pre>
             </div>
           ))}
+          {loading && (
+            <div className="msg assistant typing">
+              <div className="typing-label">입력 중...</div>
+              <div className="typing-dots" aria-label="assistant is typing">
+                <span />
+                <span />
+                <span />
+              </div>
+            </div>
+          )}
         </div>
 
         <form onSubmit={onSubmit} className="composer">
