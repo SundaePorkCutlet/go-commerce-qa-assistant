@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const INTRO_LINES = [
   "안녕하세요 백엔드 개발자 홍준호입니다.",
   "제 프로젝트에 관해 궁금하신 것들을 질문해주세요.",
@@ -37,7 +37,7 @@ function useTypingLines(lines, speedMs = 30, lineDelayMs = 350) {
 
 export default function App() {
   const [question, setQuestion] = useState("");
-  const [service, setService] = useState("ORDERFC");
+  const [service, setService] = useState("ALL");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const { doneLines, currentText, done } = useTypingLines(INTRO_LINES);
@@ -60,10 +60,14 @@ export default function App() {
     setQuestion("");
 
     try {
+      const payload = { question: q };
+      if (service !== "ALL") {
+        payload.service = service;
+      }
       const res = await fetch(`${API_BASE_URL}/api/v1/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, service }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       const botText = data?.answer ?? "응답이 비어 있습니다.";
@@ -98,6 +102,7 @@ export default function App() {
         <div className="chat-header">
           <h2>Project Q&A Chat</h2>
           <select value={service} onChange={(e) => setService(e.target.value)}>
+            <option value="ALL">ALL</option>
             <option value="ORDERFC">ORDERFC</option>
             <option value="PAYMENTFC">PAYMENTFC</option>
             <option value="PRODUCTFC">PRODUCTFC</option>
