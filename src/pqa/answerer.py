@@ -8,16 +8,20 @@ from pqa.config import Settings
 from pqa.models import Chunk
 
 
-def _mode_label(definition_mode: bool, core_logic_mode: bool) -> str:
+def _mode_label(definition_mode: bool, core_logic_mode: bool, architecture_mode: bool) -> str:
     if definition_mode:
         return "definition"
     if core_logic_mode:
         return "core-logic"
+    if architecture_mode:
+        return "architecture"
     return "general"
 
 
-def _format_with_mode(content: str, definition_mode: bool, core_logic_mode: bool) -> str:
-    return f"(mode: {_mode_label(definition_mode, core_logic_mode)})\n{content}"
+def _format_with_mode(
+    content: str, definition_mode: bool, core_logic_mode: bool, architecture_mode: bool
+) -> str:
+    return f"(mode: {_mode_label(definition_mode, core_logic_mode, architecture_mode)})\n{content}"
 
 
 def _has_core_logic_pair(evidence: list[Chunk]) -> bool:
@@ -70,6 +74,7 @@ def _build_fallback_answer(
     evidence: list[Chunk],
     definition_mode: bool,
     core_logic_mode: bool,
+    architecture_mode: bool,
     target_symbol: str | None,
 ) -> str:
     if definition_mode:
@@ -102,7 +107,9 @@ def _build_fallback_answer(
         lines.append(f"- [{i}] `{chunk.path}` ({meta_text}) -> {preview}")
 
     lines.append("")
-    if core_logic_mode:
+    if architecture_mode:
+        lines.append("보강: 아키텍처 질문으로 분류되어 서비스 경계/상호작용 관점으로 근거를 우선 제시합니다.")
+    elif core_logic_mode:
         has_handler = any("/handler/" in c.path.lower() for c in evidence)
         has_core = any(("/usecase/" in c.path.lower()) or ("/service/" in c.path.lower()) for c in evidence)
         if has_handler and has_core:
@@ -146,24 +153,31 @@ def _build_llm_answer(
     settings: Settings,
     definition_mode: bool,
     core_logic_mode: bool,
+    architecture_mode: bool,
     target_symbol: str | None,
 ) -> str:
     if core_logic_mode and not _has_core_logic_pair(evidence):
         return _format_with_mode(
-            _build_core_logic_insufficient_answer(), definition_mode, core_logic_mode
+            _build_core_logic_insufficient_answer(), definition_mode, core_logic_mode, architecture_mode
         )
 
     if not settings.openai_api_key:
         return _format_with_mode(
-            _build_fallback_answer(question, evidence, definition_mode, core_logic_mode, target_symbol),
+            _build_fallback_answer(
+                question, evidence, definition_mode, core_logic_mode, architecture_mode, target_symbol
+            ),
             definition_mode,
             core_logic_mode,
+            architecture_mode,
         )
     if not evidence:
         return _format_with_mode(
-            _build_fallback_answer(question, evidence, definition_mode, core_logic_mode, target_symbol),
+            _build_fallback_answer(
+                question, evidence, definition_mode, core_logic_mode, architecture_mode, target_symbol
+            ),
             definition_mode,
             core_logic_mode,
+            architecture_mode,
         )
 
     client = OpenAI(api_key=settings.openai_api_key)
@@ -189,6 +203,12 @@ def _build_llm_answer(
             "- 이 질문은 핵심 처리 흐름 질의다.\n"
             "- handler는 진입점, 핵심 비즈니스 로직은 usecase/service로 구분해서 설명하라.\n"
             "- 가능하면 두 계층의 근거 파일을 함께 제시하라.\n"
+        )
+    elif architecture_mode:
+        extra_rules = (
+            "- 이 질문은 아키텍처 질의다.\n"
+            "- 서비스 경계, 저장소, 메시징, 외부 연동, 관측성 관점으로 구조를 요약하라.\n"
+            "- 구현 세부보다 컴포넌트 관계와 데이터 흐름을 우선 설명하라.\n"
         )
 
     user_prompt = (
@@ -216,18 +236,27 @@ def _build_llm_answer(
         if not message:
             return _format_with_mode(
                 _build_fallback_answer(
-                    question, evidence, definition_mode, core_logic_mode, target_symbol
+                    question,
+                    evidence,
+                    definition_mode,
+                    core_logic_mode,
+                    architecture_mode,
+                    target_symbol,
                 ),
                 definition_mode,
                 core_logic_mode,
+                architecture_mode,
             )
-        return _format_with_mode(message.strip(), definition_mode, core_logic_mode)
+        return _format_with_mode(message.strip(), definition_mode, core_logic_mode, architecture_mode)
     except Exception:
         # Keep the app available even when network/API is temporarily unavailable.
         return _format_with_mode(
-            _build_fallback_answer(question, evidence, definition_mode, core_logic_mode, target_symbol),
+            _build_fallback_answer(
+                question, evidence, definition_mode, core_logic_mode, architecture_mode, target_symbol
+            ),
             definition_mode,
             core_logic_mode,
+            architecture_mode,
         )
 
 
@@ -237,9 +266,16 @@ def build_answer(
     settings: Settings,
     definition_mode: bool = False,
     core_logic_mode: bool = False,
+    architecture_mode: bool = False,
     target_symbol: str | None = None,
 ) -> str:
     return _build_llm_answer(
-        question, evidence, settings, definition_mode, core_logic_mode, target_symbol
+        question,
+        evidence,
+        settings,
+        definition_mode,
+        core_logic_mode,
+        architecture_mode,
+        target_symbol,
     )
 

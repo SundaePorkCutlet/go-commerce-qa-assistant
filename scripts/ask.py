@@ -5,11 +5,10 @@ from rich import print
 
 from pqa.answerer import build_answer
 from pqa.config import Settings
+from pqa.intent_router import route_intent
 from pqa.query_rewriter import expand_query
 from pqa.retriever import definition_first_candidates
 from pqa.retriever import extract_symbol_queries
-from pqa.retriever import is_core_logic_query
-from pqa.retriever import is_definition_lookup_query
 from pqa.retriever import search
 from pqa.vector_store import list_chunks
 from pqa.vector_store import query_chunks
@@ -188,8 +187,10 @@ def main(
             "JSONL fallback is removed for production-style deployment."
         )
 
-    definition_mode = is_definition_lookup_query(question)
-    core_logic_mode = (not definition_mode) and is_core_logic_query(question)
+    intent = route_intent(question, settings)
+    definition_mode = intent.mode == "definition"
+    core_logic_mode = intent.mode == "core-logic"
+    architecture_mode = intent.mode == "architecture"
     rewritten_query, expanded_terms = expand_query(question, settings, service=service)
     candidates = query_chunks(settings, rewritten_query, top_k=60)
     symbol_queries = extract_symbol_queries(question) | extract_symbol_queries(rewritten_query)
@@ -284,6 +285,7 @@ def main(
         settings,
         definition_mode=definition_mode,
         core_logic_mode=core_logic_mode,
+        architecture_mode=architecture_mode,
         target_symbol=primary_symbol,
     )
     print(f"(query-expanded: {' '.join(expanded_terms[:12])})")

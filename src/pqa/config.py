@@ -43,6 +43,9 @@ class Settings(BaseModel):
     openai_chat_model: str = "gpt-4o-mini"
     enable_query_rewrite: bool = True
     query_rewrite_model: str = "gpt-4o-mini"
+    enable_intent_router: bool = True
+    intent_router_model: str = "gpt-4o-mini"
+    intent_router_min_confidence: float = 0.65
 
     @staticmethod
     def load() -> "Settings":
@@ -73,5 +76,9 @@ class Settings(BaseModel):
             enable_query_rewrite=os.getenv("ENABLE_QUERY_REWRITE", "true").lower()
             in {"1", "true", "yes", "on"},
             query_rewrite_model=os.getenv("QUERY_REWRITE_MODEL", "gpt-4o-mini"),
+            enable_intent_router=os.getenv("ENABLE_INTENT_ROUTER", "true").lower()
+            in {"1", "true", "yes", "on"},
+            intent_router_model=os.getenv("INTENT_ROUTER_MODEL", "gpt-4o-mini"),
+            intent_router_min_confidence=float(os.getenv("INTENT_ROUTER_MIN_CONFIDENCE", "0.65")),
         )
 

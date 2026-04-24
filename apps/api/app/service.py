@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from pqa.answerer import build_answer
 from pqa.config import Settings
+from pqa.intent_router import route_intent
 from pqa.query_rewriter import expand_query
 from pqa.retriever import definition_first_candidates
 from pqa.retriever import extract_symbol_queries
-from pqa.retriever import is_core_logic_query
-from pqa.retriever import is_definition_lookup_query
 from pqa.retriever import search
 from pqa.vector_store import list_chunks
 from pqa.vector_store import query_chunks
@@ -41,6 +40,98 @@ def _merge_dedup_chunks(chunks: list, limit: int = 5) -> list:
     return merged
 
 
+def _chunk_role_candidates(chunk) -> set[str]:
+    path = chunk.path.lower()
+    text = chunk.text.lower()
+    roles: set[str] = set()
+
+    if "/handler/" in path or "router" in text or "http." in text:
+        roles.add("entry")
+    if "/usecase/" in path or "/service/" in path:
+        roles.add("core")
+    if "/repository/" in path or "/repo/" in path or "gorm" in text or "mongo" in text:
+        roles.add("repository")
+    if "/kafka/" in path or "publish" in text or "consumer" in text or "event" in text:
+        roles.add("message")
+    if "/grpc/" in path or "/client/" in path or "httpclient" in text or "external" in text:
+        roles.add("external_api")
+    if "redis" in text or "/cache/" in path:
+        roles.add("cache")
+    if "validate" in text or "policy" in text or "rbac" in text:
+        roles.add("validation")
+    if "tracing" in path or "prometheus" in path or "logger" in text or "otel" in text:
+        roles.add("observability")
+
+    if not roles:
+        roles.add("other")
+    return roles
+
+
+def _select_flexible_evidence(evidence: list, limit: int = 5) -> list:
+    """Context expansion by role candidates.
+
+    Do not depend only on top-k similarity.
+    1) Secure entrypoint/core first according to question intent (core preferred).
+    2) Expand optionally with related roles:
+       repository/persistence, message/event, external API, cache,
+       validation/policy, observability.
+    3) Fill remaining slots by original ranking to keep recall.
+    """
+    if not evidence:
+        return []
+
+    selected: list = []
+    seen_ids: set[str] = set()
+
+    def push(chunk) -> None:
+        if chunk.id in seen_ids:
+            return
+        seen_ids.add(chunk.id)
+        selected.append(chunk)
+
+    role_map: dict[str, list] = {
+        "entry": [],
+        "core": [],
+        "repository": [],
+        "message": [],
+        "external_api": [],
+        "cache": [],
+        "validation": [],
+        "observability": [],
+        "other": [],
+    }
+    for c in evidence:
+        for role in _chunk_role_candidates(c):
+            role_map.setdefault(role, []).append(c)
+
+    # required: core 우선 확보, entry 보강
+    if role_map["core"]:
+        push(role_map["core"][0])
+    if role_map["entry"]:
+        push(role_map["entry"][0])
+    # core가 전혀 없으면 entry라도 확보
+    if not selected and role_map["entry"]:
+        push(role_map["entry"][0])
+    # entry/core 둘 다 없으면 기존 상위 결과 유지
+    if not selected and evidence:
+        push(evidence[0])
+
+    # optional roles
+    for opt_role in ("repository", "message", "external_api", "cache", "validation", "observability"):
+        if len(selected) >= limit:
+            break
+        if role_map[opt_role]:
+            push(role_map[opt_role][0])
+
+    # fill remainder by original ranking
+    for c in evidence:
+        if len(selected) >= limit:
+            break
+        push(c)
+
+    return selected[:limit]
+
+
 def _is_noisy_path(path: str) -> bool:
     lower = path.lower()
     return (
@@ -53,8 +144,10 @@ def _is_noisy_path(path: str) -> bool:
     )
 
 
-def _needs_second_pass(evidence: list, definition_mode: bool) -> bool:
+def _needs_second_pass(evidence: list, definition_mode: bool, architecture_mode: bool) -> bool:
     if definition_mode:
+        return False
+    if architecture_mode:
         return False
     if not evidence:
         return True
@@ -102,11 +195,16 @@ def ask_question(question: str, service: str | None = None, path_prefix: str | N
     if not settings.use_chroma:
         raise RuntimeError("USE_CHROMA must be true for API mode.")
 
-    definition_mode = is_definition_lookup_query(question)
-    core_logic_mode = (not definition_mode) and is_core_logic_query(question)
+    intent = route_intent(question, settings)
+    definition_mode = intent.mode == "definition"
+    core_logic_mode = intent.mode == "core-logic"
+    architecture_mode = intent.mode == "architecture"
     rewritten_query, _expanded_terms = expand_query(question, settings, service=service)
     effective_service = service or _infer_service_from_query(question, rewritten_query)
-    candidates = query_chunks(settings, rewritten_query, top_k=60)
+    retrieval_query = rewritten_query
+    if architecture_mode:
+        retrieval_query = f"{rewritten_query} architecture overview component flow docs readme"
+    candidates = query_chunks(settings, retrieval_query, top_k=60)
     symbol_queries = extract_symbol_queries(question) | extract_symbol_queries(rewritten_query)
     for symbol in symbol_queries:
         candidates.extend(query_chunks(settings, symbol, top_k=30))
@@ -157,7 +255,9 @@ def ask_question(question: str, service: str | None = None, path_prefix: str | N
             raw = [c for c in raw if c.path.startswith(normalized_prefix)]
         evidence = raw[:5]
 
-    if _needs_second_pass(evidence, definition_mode=definition_mode):
+    if _needs_second_pass(
+        evidence, definition_mode=definition_mode, architecture_mode=architecture_mode
+    ):
         if full_chunks is None:
             full_chunks = list_chunks(settings)
         filtered_chunks = [c for c in full_chunks if not _is_noisy_path(c.path)]
@@ -188,6 +288,8 @@ def ask_question(question: str, service: str | None = None, path_prefix: str | N
             )
         evidence = _merge_dedup_chunks(sweep_hits, limit=5)
 
+    evidence = _select_flexible_evidence(evidence, limit=5)
+
     primary_symbol = next(iter(symbol_queries), None)
     answer = build_answer(
         question,
@@ -195,7 +297,8 @@ def ask_question(question: str, service: str | None = None, path_prefix: str | N
         settings,
         definition_mode=definition_mode,
         core_logic_mode=core_logic_mode,
+        architecture_mode=architecture_mode,
         target_symbol=primary_symbol,
     )
-    mode = "definition" if definition_mode else "core-logic" if core_logic_mode else "general"
+    mode = intent.mode
     return answer, mode

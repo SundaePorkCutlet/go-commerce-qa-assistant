@@ -100,6 +100,11 @@ Query rewrite env:
 - `ENABLE_QUERY_REWRITE=true|false`
 - `QUERY_REWRITE_MODEL=gpt-4o-mini`
 
+Intent router env (rule + optional LLM classifier):
+- `ENABLE_INTENT_ROUTER=true|false`
+- `INTENT_ROUTER_MODEL=gpt-4o-mini`
+- `INTENT_ROUTER_MIN_CONFIDENCE=0.65`
+
 ## Deployment Notes (EC2 / Domain)
 
 - Web and API are served through a single Nginx entrypoint in `apps/web/nginx.conf`.
@@ -150,6 +155,10 @@ If you want a separate Chroma server via Docker:
 ## ALL Mode Quality Improvements
 
 - UI supports `ALL` service queries by omitting `service` filter in API payload.
+- Intent is routed in hybrid mode (rule-first, LLM fallback for ambiguous questions): `definition`, `core-logic`, `architecture`, `general`.
 - API now performs query-based service inference for broad questions.
 - If initial ALL retrieval fails, API performs a cross-service sweep (`ORDERFC`, `PAYMENTFC`, `PRODUCTFC`, `USERFC`) and merges top evidence.
 - This reduces "근거 없음" responses for cross-domain or ambiguous questions while keeping explicit FC filtering available.
+- Context expansion is role-candidate based, not top-k similarity only:
+  - required first: `entrypoint` (or related entry) + `core logic` (core preferred)
+  - optional expansion: `repository/persistence`, `message/event`, `external API`, `cache`, `validation/policy`, `observability`
