@@ -20,13 +20,10 @@ jobs:
           script_stop: true
           script: |
             set -e
-            cd ~/go-commerce
+            cd ~/go-commerce/tools/project-qa-assistant
             git fetch origin
-            git reset --hard origin/master
-            git submodule sync --recursive
-            git submodule update --init --recursive
+            git reset --hard origin/main
 
-            cd tools/project-qa-assistant
             docker compose -f docker-compose.app.yml build web api
             docker compose -f docker-compose.app.yml up -d
 
