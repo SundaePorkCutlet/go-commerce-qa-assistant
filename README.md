@@ -50,9 +50,9 @@ From `tools/project-qa-assistant`:
 2. Build index into Chroma:
    - `docker compose -f docker-compose.app.yml --profile tools run --rm indexer`
 3. Open browser:
-   - `http://localhost:5174`
-4. API health:
-   - `http://localhost:8001/health`
+   - `http://localhost/`
+4. API health (via web nginx proxy):
+   - `http://localhost/api/v1/ask`
 
 Stop:
 - `docker compose -f docker-compose.app.yml down`
@@ -100,6 +100,15 @@ Query rewrite env:
 - `ENABLE_QUERY_REWRITE=true|false`
 - `QUERY_REWRITE_MODEL=gpt-4o-mini`
 
+## Deployment Notes (EC2 / Domain)
+
+- Web and API are served through a single Nginx entrypoint in `apps/web/nginx.conf`.
+- Browser requests use the same origin and call `/api/v1/ask`; nginx proxies this to internal `api:8001`.
+- Recommended security group exposure:
+  - open `80/tcp` to public
+  - keep `8001` and `8000` private (not exposed externally)
+- For custom domain, set nginx `server_name` to your domain (e.g. `hongjunho.xyz`).
+
 If you want a separate Chroma server via Docker:
 
 - `docker compose -f docker-compose.chroma.yml up -d`
@@ -137,3 +146,10 @@ If you want a separate Chroma server via Docker:
 - `--service`, `--path-prefix` 옵션으로 범위를 강제해 오답 문맥 유입 차단
 
 면접에서는 "고정 길이 chunk 한계를 심볼 단위 청킹과 symbol-aware 재정렬로 개선했다"라고 설명하면 좋다.
+
+## ALL Mode Quality Improvements
+
+- UI supports `ALL` service queries by omitting `service` filter in API payload.
+- API now performs query-based service inference for broad questions.
+- If initial ALL retrieval fails, API performs a cross-service sweep (`ORDERFC`, `PAYMENTFC`, `PRODUCTFC`, `USERFC`) and merges top evidence.
+- This reduces "근거 없음" responses for cross-domain or ambiguous questions while keeping explicit FC filtering available.

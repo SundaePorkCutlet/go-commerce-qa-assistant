@@ -12,6 +12,35 @@ from pqa.vector_store import list_chunks
 from pqa.vector_store import query_chunks
 
 
+KNOWN_SERVICES = ("ORDERFC", "PAYMENTFC", "PRODUCTFC", "USERFC")
+
+
+def _infer_service_from_query(question: str, rewritten_query: str) -> str | None:
+    q = f"{question} {rewritten_query}".lower()
+    if any(k in q for k in ("login", "signin", "signup", "auth", "jwt", "user", "유저", "회원", "로그인", "인증")):
+        return "USERFC"
+    if any(k in q for k in ("checkout", "order", "주문", "장바구니", "idempotency", "멱등")):
+        return "ORDERFC"
+    if any(k in q for k in ("payment", "결제", "invoice", "paid", "refund", "환불")):
+        return "PAYMENTFC"
+    if any(k in q for k in ("product", "catalog", "inventory", "stock", "상품", "재고")):
+        return "PRODUCTFC"
+    return None
+
+
+def _merge_dedup_chunks(chunks: list, limit: int = 5) -> list:
+    merged: list = []
+    seen_ids: set[str] = set()
+    for c in chunks:
+        if c.id in seen_ids:
+            continue
+        seen_ids.add(c.id)
+        merged.append(c)
+        if len(merged) >= limit:
+            break
+    return merged
+
+
 def _is_noisy_path(path: str) -> bool:
     lower = path.lower()
     return (
@@ -76,6 +105,7 @@ def ask_question(question: str, service: str | None = None, path_prefix: str | N
     definition_mode = is_definition_lookup_query(question)
     core_logic_mode = (not definition_mode) and is_core_logic_query(question)
     rewritten_query, _expanded_terms = expand_query(question, settings, service=service)
+    effective_service = service or _infer_service_from_query(question, rewritten_query)
     candidates = query_chunks(settings, rewritten_query, top_k=60)
     symbol_queries = extract_symbol_queries(question) | extract_symbol_queries(rewritten_query)
     for symbol in symbol_queries:
@@ -97,7 +127,7 @@ def ask_question(question: str, service: str | None = None, path_prefix: str | N
         evidence = definition_first_candidates(
             rewritten_query,
             full_chunks,
-            service_filter=service,
+            service_filter=effective_service,
             path_prefix=path_prefix,
             top_k=5,
         )
@@ -106,21 +136,21 @@ def ask_question(question: str, service: str | None = None, path_prefix: str | N
             rewritten_query,
             candidates,
             top_k=5,
-            service_filter=service,
+            service_filter=effective_service,
             path_prefix=path_prefix,
         )
     if symbol_queries:
         if full_chunks is None:
             full_chunks = list_chunks(settings)
         symbol_hits = _symbol_priority_matches(
-            full_chunks, symbol_queries, service=service, path_prefix=path_prefix, limit=5
+            full_chunks, symbol_queries, service=effective_service, path_prefix=path_prefix, limit=5
         )
         if symbol_hits and not definition_mode:
             evidence = symbol_hits
     if not evidence:
         raw = candidates
-        if service:
-            svc = service.upper()
+        if effective_service:
+            svc = effective_service.upper()
             raw = [c for c in raw if c.service == svc]
         if path_prefix:
             normalized_prefix = path_prefix.replace("\\", "/")
@@ -135,11 +165,28 @@ def ask_question(question: str, service: str | None = None, path_prefix: str | N
             rewritten_query,
             filtered_chunks,
             top_k=8,
-            service_filter=service,
+            service_filter=effective_service,
             path_prefix=path_prefix,
         )
         if second_pass:
             evidence = second_pass
+
+    # In ALL mode, broaden recovery path when first retrieval misses.
+    if not evidence and service is None:
+        if full_chunks is None:
+            full_chunks = list_chunks(settings)
+        sweep_hits: list = []
+        for svc in KNOWN_SERVICES:
+            sweep_hits.extend(
+                search(
+                    rewritten_query,
+                    full_chunks,
+                    top_k=2,
+                    service_filter=svc,
+                    path_prefix=path_prefix,
+                )
+            )
+        evidence = _merge_dedup_chunks(sweep_hits, limit=5)
 
     primary_symbol = next(iter(symbol_queries), None)
     answer = build_answer(
