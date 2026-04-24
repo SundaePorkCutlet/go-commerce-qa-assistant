@@ -287,6 +287,7 @@ def main(
         core_logic_mode=core_logic_mode,
         architecture_mode=architecture_mode,
         target_symbol=primary_symbol,
+        confidence="medium" if evidence else "none",
     )
     print(f"(query-expanded: {' '.join(expanded_terms[:12])})")
     print(answer)

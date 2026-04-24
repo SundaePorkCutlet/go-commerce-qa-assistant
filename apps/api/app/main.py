@@ -25,9 +25,9 @@ def health() -> dict[str, str]:
 
 @app.post("/api/v1/ask", response_model=AskResponse)
 def ask(payload: AskRequest) -> AskResponse:
-    answer, mode = ask_question(
+    answer, mode, confidence = ask_question(
         question=payload.question,
         service=payload.service,
         path_prefix=payload.path_prefix,
     )
-    return AskResponse(answer=answer, mode=mode)
+    return AskResponse(answer=answer, mode=mode, confidence=confidence)

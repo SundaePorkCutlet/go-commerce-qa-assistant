@@ -9,7 +9,7 @@ from openai import OpenAI
 from pqa.config import Settings
 
 ARCHITECTURE_HINT_RE = re.compile(
-    r"(아키텍처|구조|전체\s*흐름|전체\s*구성|구성도|시스템\s*구성|architecture|high[- ]level|overview)",
+    r"(아키텍처|구조|전체\s*흐름|전체\s*구성|구성도|시스템\s*구성|서비스\s*분리|마이크로서비스|msa|architecture|high[- ]level|overview|microservice)",
     re.IGNORECASE,
 )
 DEFINITION_HINT_RE = re.compile(

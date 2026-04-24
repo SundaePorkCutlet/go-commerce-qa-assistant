@@ -12,3 +12,4 @@ class AskRequest(BaseModel):
 class AskResponse(BaseModel):
     answer: str
     mode: str
+    confidence: str

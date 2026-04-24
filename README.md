@@ -162,3 +162,13 @@ If you want a separate Chroma server via Docker:
 - Context expansion is role-candidate based, not top-k similarity only:
   - required first: `entrypoint` (or related entry) + `core logic` (core preferred)
   - optional expansion: `repository/persistence`, `message/event`, `external API`, `cache`, `validation/policy`, `observability`
+
+## Confidence-aware Answers
+
+- API returns `confidence: high | medium | low | none` with each answer.
+- Even with a single weak evidence, the system prefers `low` confidence answers over hard failure.
+- Answer tone is adjusted by confidence:
+  - `high`: assertive
+  - `medium`: likely/probable
+  - `low`: short and conservative, explicitly requiring follow-up verification
+- UI shows confidence badges beside each assistant response for quick trust calibration.

@@ -76,6 +76,7 @@ def _build_fallback_answer(
     core_logic_mode: bool,
     architecture_mode: bool,
     target_symbol: str | None,
+    confidence: str,
 ) -> str:
     if definition_mode:
         return _build_definition_fallback_answer(target_symbol, evidence)
@@ -85,12 +86,28 @@ def _build_fallback_answer(
             "근거: 없음"
         )
 
-    lines = [
-        f"질문: {question}",
-        "",
-        "초기 답변(근거 기반):",
-        "- 아래 파일 조각에서 관련 구현 흔적을 찾았습니다.",
-    ]
+    if confidence == "low":
+        lines = [
+            "답변:",
+            "제한된 근거 기준으로는 관련 구현이 존재하는 것으로 추정됩니다.",
+            "다만 추가 확인이 필요합니다.",
+            "",
+            "근거:",
+        ]
+    elif confidence == "medium":
+        lines = [
+            f"질문: {question}",
+            "",
+            "중간 신뢰도 답변(근거 기반):",
+            "- 현재 근거상 관련 구현 가능성이 높습니다.",
+        ]
+    else:
+        lines = [
+            f"질문: {question}",
+            "",
+            "초기 답변(근거 기반):",
+            "- 아래 파일 조각에서 관련 구현 흔적을 찾았습니다.",
+        ]
     for i, chunk in enumerate(evidence, start=1):
         preview = " ".join(chunk.text.strip().split())
         preview = (preview[:160] + "...") if len(preview) > 160 else preview
@@ -155,6 +172,7 @@ def _build_llm_answer(
     core_logic_mode: bool,
     architecture_mode: bool,
     target_symbol: str | None,
+    confidence: str,
 ) -> str:
     if core_logic_mode and not _has_core_logic_pair(evidence):
         return _format_with_mode(
@@ -164,7 +182,13 @@ def _build_llm_answer(
     if not settings.openai_api_key:
         return _format_with_mode(
             _build_fallback_answer(
-                question, evidence, definition_mode, core_logic_mode, architecture_mode, target_symbol
+                question,
+                evidence,
+                definition_mode,
+                core_logic_mode,
+                architecture_mode,
+                target_symbol,
+                confidence,
             ),
             definition_mode,
             core_logic_mode,
@@ -173,7 +197,13 @@ def _build_llm_answer(
     if not evidence:
         return _format_with_mode(
             _build_fallback_answer(
-                question, evidence, definition_mode, core_logic_mode, architecture_mode, target_symbol
+                question,
+                evidence,
+                definition_mode,
+                core_logic_mode,
+                architecture_mode,
+                target_symbol,
+                confidence,
             ),
             definition_mode,
             core_logic_mode,
@@ -211,6 +241,24 @@ def _build_llm_answer(
             "- 구현 세부보다 컴포넌트 관계와 데이터 흐름을 우선 설명하라.\n"
         )
 
+    confidence_rules = ""
+    if confidence == "high":
+        confidence_rules = (
+            "- confidence=high: 단정형 문장(~입니다)을 사용해도 좋다.\n"
+            "- 핵심 근거를 명확하게 제시하라.\n"
+        )
+    elif confidence == "medium":
+        confidence_rules = (
+            "- confidence=medium: 가능성/추정 표현(~로 보입니다, 가능성이 높습니다)을 사용하라.\n"
+            "- 과도한 단정은 피하라.\n"
+        )
+    elif confidence == "low":
+        confidence_rules = (
+            "- confidence=low: 1~2줄로 짧고 보수적으로 답하라.\n"
+            "- '제한된 근거 기준으로는 ...로 추정됩니다. 다만 추가 확인이 필요합니다.' 톤을 유지하라.\n"
+            "- 근거가 약한 부분은 명확히 불확실하다고 적어라.\n"
+        )
+
     user_prompt = (
         f"질문:\n{question}\n\n"
         f"근거 청크:\n{evidence_context}\n\n"
@@ -221,6 +269,7 @@ def _build_llm_answer(
         "- 마지막에 '근거 파일:' 줄을 만들고 파일 경로를 bullet로 나열\n"
         "- 확실하지 않으면 불확실하다고 명시"
         + ("\n" + extra_rules if extra_rules else "")
+        + ("\n" + confidence_rules if confidence_rules else "")
     )
 
     try:
@@ -242,6 +291,7 @@ def _build_llm_answer(
                     core_logic_mode,
                     architecture_mode,
                     target_symbol,
+                    confidence,
                 ),
                 definition_mode,
                 core_logic_mode,
@@ -252,7 +302,13 @@ def _build_llm_answer(
         # Keep the app available even when network/API is temporarily unavailable.
         return _format_with_mode(
             _build_fallback_answer(
-                question, evidence, definition_mode, core_logic_mode, architecture_mode, target_symbol
+                question,
+                evidence,
+                definition_mode,
+                core_logic_mode,
+                architecture_mode,
+                target_symbol,
+                confidence,
             ),
             definition_mode,
             core_logic_mode,
@@ -268,6 +324,7 @@ def build_answer(
     core_logic_mode: bool = False,
     architecture_mode: bool = False,
     target_symbol: str | None = None,
+    confidence: str = "none",
 ) -> str:
     return _build_llm_answer(
         question,
@@ -277,5 +334,6 @@ def build_answer(
         core_logic_mode,
         architecture_mode,
         target_symbol,
+        confidence,
     )
 

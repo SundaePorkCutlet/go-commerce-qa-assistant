@@ -14,6 +14,30 @@ RULE_MAP: dict[str, list[str]] = {
     "결제": ["payment", "invoice", "paid", "pending", "kafka"],
     "주문": ["order", "checkout", "idempotency", "order_id", "usecase"],
     "재고": ["stock", "inventory", "rollback", "decrease", "update"],
+    "아키텍처": ["architecture", "overview", "component", "boundary", "flow", "readme", "docs"],
+    "msa": ["microservice", "service-boundary", "domain", "architecture", "component", "event-driven"],
+    "마이크로서비스": ["microservice", "service-boundary", "domain", "architecture", "component"],
+    "구조": ["architecture", "overview", "component", "flow", "boundary", "readme", "docs"],
+    "카프카": ["kafka", "producer", "consumer", "topic", "partition", "offset", "dlq", "event"],
+    "멱등": ["idempotency", "idempotent", "enable.idempotence", "dedup", "duplicate", "acks", "token"],
+    "트레이싱": ["tracing", "trace", "span", "trace-id", "otel", "opentelemetry", "context-propagation"],
+    "관측": ["observability", "metrics", "logging", "tracing", "prometheus", "grafana", "jaeger", "loki"],
+    "모니터링": ["monitoring", "metrics", "prometheus", "grafana", "alert", "dashboard"],
+    "에러": ["error", "exception", "retry", "backoff", "fallback", "timeout", "circuit-breaker"],
+    "재시도": ["retry", "backoff", "jitter", "timeout", "transient", "failure"],
+    "큐": ["queue", "kafka", "topic", "consumer", "producer", "event", "message"],
+    "이벤트": ["event", "publish", "subscribe", "producer", "consumer", "kafka"],
+    "아웃박스": ["outbox", "transactional-outbox", "event-publish", "relay", "dedup"],
+    "사가": ["saga", "orchestration", "choreography", "compensation", "distributed-transaction"],
+    "redis": ["redis", "cache", "ttl", "expire", "invalidation", "key"],
+    "캐시": ["cache", "redis", "ttl", "invalidate", "warming", "hit-rate"],
+    "db": ["database", "postgres", "mongodb", "transaction", "repository", "query"],
+    "postgres": ["postgres", "postgresql", "sql", "transaction", "index", "lock"],
+    "mongo": ["mongodb", "mongo", "aggregation", "pipeline", "document", "collection"],
+    "grpc": ["grpc", "protobuf", "rpc", "interceptor", "deadline", "metadata"],
+    "vault": ["vault", "secret", "token", "lease", "renew", "kv"],
+    "보안": ["security", "auth", "authorization", "rbac", "jwt", "vault", "secret"],
+    "배포": ["deploy", "docker", "compose", "ci", "cd", "workflow", "ec2", "nginx"],
 }
 
 TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_./:-]*|[가-힣]{2,}")
@@ -40,9 +64,12 @@ def _llm_expand(question: str, settings: Settings, service: str | None = None) -
         "You rewrite developer questions into code-search keywords.\n"
         "Return strict JSON only: {\"terms\": [\"...\"]}\n"
         "Rules:\n"
-        "- 6~12 concise terms\n"
+        "- 8~16 concise terms\n"
         "- mix Korean + English technical terms\n"
+        "- include likely abbreviations and synonyms (e.g., msa<->microservice, 멱등성<->idempotency)\n"
+        "- include infra/ops variants when relevant (kafka/redis/postgres/mongo/tracing)\n"
         "- prioritize implementation symbols, middleware, handlers, usecases, services\n"
+        "- avoid generic words; choose terms that can match source/docs filenames or code lines\n"
         "- no prose, no markdown\n\n"
         f"service={service_text}\n"
         f"question={question}\n"

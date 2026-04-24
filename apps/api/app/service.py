@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from pqa.answerer import build_answer
 from pqa.config import Settings
 from pqa.intent_router import route_intent
@@ -190,7 +192,79 @@ def _symbol_priority_matches(chunks: list, symbols: set[str], service: str | Non
     return deduped
 
 
-def ask_question(question: str, service: str | None = None, path_prefix: str | None = None) -> tuple[str, str]:
+def _normalize_symbol(symbol: str) -> str:
+    lower = symbol.lower()
+    if "#part" in lower:
+        lower = lower.split("#part", 1)[0]
+    if "." in lower:
+        lower = lower.split(".")[-1]
+    return lower.strip()
+
+
+def _estimate_confidence(
+    evidence: list,
+    *,
+    service: str | None,
+    symbol_queries: set[str],
+    used_second_pass: bool,
+    used_all_sweep: bool,
+) -> str:
+    if not evidence:
+        return "none"
+
+    score = 0.0
+
+    count = len(evidence)
+    if count >= 1:
+        score += 1.0
+    if count >= 3:
+        score += 1.0
+
+    roles: set[str] = set()
+    for c in evidence:
+        roles.update(r for r in _chunk_role_candidates(c) if r != "other")
+    if len(roles) >= 2:
+        score += 1.0
+    if len(roles) >= 3:
+        score += 0.5
+
+    has_code = any(Path(c.path).suffix.lower() == ".go" for c in evidence)
+    if has_code:
+        score += 1.0
+    else:
+        score -= 0.5
+
+    normalized_symbols = {_normalize_symbol(s) for s in symbol_queries}
+    has_symbol_exact = any(
+        (c.symbol_hint and _normalize_symbol(c.symbol_hint) in normalized_symbols)
+        for c in evidence
+    )
+    if normalized_symbols and has_symbol_exact:
+        score += 1.0
+
+    if service:
+        svc = service.upper()
+        svc_hits = sum(1 for c in evidence if c.service == svc)
+        if svc_hits >= max(1, len(evidence) // 2):
+            score += 0.5
+        else:
+            score -= 0.5
+
+    if used_second_pass:
+        score -= 0.4
+    if used_all_sweep:
+        score -= 0.4
+
+    if score >= 3.8:
+        return "high"
+    if score >= 2.2:
+        return "medium"
+    return "low"
+
+
+def ask_question(
+    question: str, service: str | None = None, path_prefix: str | None = None
+) -> tuple[str, str, str]:
     settings = Settings.load()
     if not settings.use_chroma:
         raise RuntimeError("USE_CHROMA must be true for API mode.")
@@ -220,6 +294,8 @@ def ask_question(question: str, service: str | None = None, path_prefix: str | N
 
     evidence = []
     full_chunks = None
+    used_second_pass = False
+    used_all_sweep = False
     if definition_mode and symbol_queries:
         full_chunks = list_chunks(settings)
         evidence = definition_first_candidates(
@@ -255,6 +331,18 @@ def ask_question(question: str, service: str | None = None, path_prefix: str | N
             raw = [c for c in raw if c.path.startswith(normalized_prefix)]
         evidence = raw[:5]
 
+    # Architecture queries should not fail only because service-scoped evidence is sparse.
+    if architecture_mode and not evidence:
+        if full_chunks is None:
+            full_chunks = list_chunks(settings)
+        evidence = search(
+            retrieval_query,
+            full_chunks,
+            top_k=8,
+            service_filter=None,
+            path_prefix=path_prefix,
+        )
+
     if _needs_second_pass(
         evidence, definition_mode=definition_mode, architecture_mode=architecture_mode
     ):
@@ -270,6 +358,7 @@ def ask_question(question: str, service: str | None = None, path_prefix: str | N
         )
         if second_pass:
             evidence = second_pass
+            used_second_pass = True
 
     # In ALL mode, broaden recovery path when first retrieval misses.
     if not evidence and service is None:
@@ -287,8 +376,16 @@ def ask_question(question: str, service: str | None = None, path_prefix: str | N
                 )
             )
         evidence = _merge_dedup_chunks(sweep_hits, limit=5)
+        used_all_sweep = True
 
     evidence = _select_flexible_evidence(evidence, limit=5)
+    confidence = _estimate_confidence(
+        evidence,
+        service=effective_service,
+        symbol_queries=symbol_queries,
+        used_second_pass=used_second_pass,
+        used_all_sweep=used_all_sweep,
+    )
 
     primary_symbol = next(iter(symbol_queries), None)
     answer = build_answer(
@@ -299,6 +396,7 @@ def ask_question(question: str, service: str | None = None, path_prefix: str | N
         core_logic_mode=core_logic_mode,
         architecture_mode=architecture_mode,
         target_symbol=primary_symbol,
+        confidence=confidence,
     )
     mode = intent.mode
-    return answer, mode
+    return answer, mode, confidence

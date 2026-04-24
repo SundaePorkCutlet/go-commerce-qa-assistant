@@ -102,11 +102,41 @@ def definition_first_candidates(
 def expand_query_tokens(tokens: set[str]) -> set[str]:
     expanded = set(tokens)
     if "멱등" in expanded or "멱등성" in expanded:
-        expanded.update({"idempotency"})
+        expanded.update(
+            {
+                "idempotency",
+                "idempotent",
+                "enable.idempotence",
+                "acks",
+                "dedup",
+                "duplicate",
+            }
+        )
     if "트레이싱" in expanded:
         expanded.update({"tracing", "trace", "context"})
     if "감사로그" in expanded or "감사" in expanded:
         expanded.update({"audit", "log"})
+    if "카프카" in expanded:
+        expanded.update({"kafka", "producer", "consumer", "partition", "acks"})
+    if "msa" in expanded or "마이크로서비스" in expanded or "서비스분리" in expanded:
+        expanded.update({"microservice", "architecture", "component", "boundary", "domain"})
+    if "msa" in expanded or "마이크로서비스" in expanded or "구조" in expanded:
+        expanded.update(
+            {
+                "microservice",
+                "architecture",
+                "component",
+                "boundary",
+                "domain",
+                "service",
+                "readme",
+                "docs",
+            }
+        )
+    if "구성" in expanded or "아키텍처" in expanded:
+        expanded.update({"overview", "component", "boundary", "interaction", "service"})
+    if "메시지" in expanded or "메시징" in expanded:
+        expanded.update({"message", "event", "kafka", "producer", "consumer"})
     return expanded
 
 
@@ -178,7 +208,9 @@ def search(
     symbol_queries = extract_symbol_queries(query)
     qvec = tf(list(qtokens))
     scored: list[tuple[float, Chunk]] = []
-    require_idempotency_signal = "idempotency" in qtokens
+    require_idempotency_signal = bool(
+        {"idempotency", "idempotent", "enable.idempotence"} & qtokens
+    )
     service_hint = None
     implementation_query = any(
         (t.startswith("어디") or t in {"구현", "검증", "where", "implemented"})
@@ -202,16 +234,28 @@ def search(
         path_lower = c.path.lower()
 
         if require_idempotency_signal:
-            if not (
-                "idempotency" in text_lower
-                or "idempotency" in path_lower
-            ):
-                continue
+            idempotency_hints = (
+                "idempotency",
+                "idempotent",
+                "enable.idempotence",
+                "duplicate",
+                "dedup",
+                "acks=all",
+                "acks",
+            )
+            if not any(h in text_lower or h in path_lower for h in idempotency_hints):
+                # Do not hard-drop weakly related chunks; keep them with lower score.
+                score_penalty = 0.55
+            else:
+                score_penalty = 1.0
+        else:
+            score_penalty = 1.0
 
         cvec = tf(tokenize(c.text))
         score = cosine_sim(qvec, cvec)
         if score <= 0:
             continue
+        score *= score_penalty
 
         path = c.path
         suffix = Path(path).suffix.lower()
