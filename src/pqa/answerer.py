@@ -21,7 +21,8 @@ def _mode_label(definition_mode: bool, core_logic_mode: bool, architecture_mode:
 def _format_with_mode(
     content: str, definition_mode: bool, core_logic_mode: bool, architecture_mode: bool
 ) -> str:
-    return f"(mode: {_mode_label(definition_mode, core_logic_mode, architecture_mode)})\n{content}"
+    # Mode is rendered as UI meta badge; avoid duplicating it in answer body.
+    return content
 
 
 def _has_core_logic_pair(evidence: list[Chunk]) -> bool:
