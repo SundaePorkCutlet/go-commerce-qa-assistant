@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from openai import OpenAI
 
@@ -165,6 +166,24 @@ def _build_evidence_context(evidence: list[Chunk]) -> str:
     return "\n".join(lines).strip()
 
 
+def _append_evidence_files_section(content: str, evidence: list[Chunk]) -> str:
+    cleaned = re.sub(r"\n*근거 파일:\n(?:- .*\n?)*\s*$", "", content.strip(), flags=re.MULTILINE)
+    dedup: dict[str, str] = {}
+    for chunk in evidence:
+        line_span = ""
+        if chunk.start_line is not None and chunk.end_line is not None:
+            line_span = f"L{chunk.start_line}-L{chunk.end_line}"
+        dedup.setdefault(chunk.path, line_span)
+
+    lines = ["근거 파일:"]
+    for path, line_span in dedup.items():
+        if line_span:
+            lines.append(f"- `{path}` ({line_span})")
+        else:
+            lines.append(f"- `{path}`")
+    return f"{cleaned}\n\n" + "\n".join(lines)
+
+
 def _build_llm_answer(
     question: str,
     evidence: list[Chunk],
@@ -298,7 +317,8 @@ def _build_llm_answer(
                 core_logic_mode,
                 architecture_mode,
             )
-        return _format_with_mode(message.strip(), definition_mode, core_logic_mode, architecture_mode)
+        finalized = _append_evidence_files_section(message.strip(), evidence)
+        return _format_with_mode(finalized, definition_mode, core_logic_mode, architecture_mode)
     except Exception:
         # Keep the app available even when network/API is temporarily unavailable.
         return _format_with_mode(
