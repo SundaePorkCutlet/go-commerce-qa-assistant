@@ -166,12 +166,23 @@ If you want a separate Chroma server via Docker:
 
 - UI supports `ALL` service queries by omitting `service` filter in API payload.
 - Intent is routed in hybrid mode (rule-first, LLM fallback for ambiguous questions): `definition`, `core-logic`, `architecture`, `general`.
-- API now performs query-based service inference for broad questions.
+- API does **not** pin a service in `ALL` mode; retrieval stays cross-service by default.
+- This prevents false negatives where a keyword (e.g., `멱등성`) could force `ORDERFC` and hide valid `PRODUCTFC` Kafka evidence.
 - If initial ALL retrieval fails, API performs a cross-service sweep (`ORDERFC`, `PAYMENTFC`, `PRODUCTFC`, `USERFC`) and merges top evidence.
 - This reduces "근거 없음" responses for cross-domain or ambiguous questions while keeping explicit FC filtering available.
 - Context expansion is role-candidate based, not top-k similarity only:
   - required first: `entrypoint` (or related entry) + `core logic` (core preferred)
   - optional expansion: `repository/persistence`, `message/event`, `external API`, `cache`, `validation/policy`, `observability`
+
+### 2026-04-25 Retrieval Incident Note
+
+- Symptom: In `ALL`, question "카프카 멱등성" sometimes returned docs only or weak evidence.
+- Root cause: implicit service pinning and fallback branching based on raw `service` value.
+- Fix:
+  - normalize `service` (`ALL`/empty -> no filter)
+  - ensure ALL-mode recovery sweep triggers when effective filter is absent
+  - remove stale query-based service inference path from API flow
+- Result: Kafka idempotency answers now surface implementation evidence more consistently across services.
 
 ## Confidence-aware Answers
 

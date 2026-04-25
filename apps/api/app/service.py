@@ -16,39 +16,6 @@ from pqa.vector_store import query_chunks
 KNOWN_SERVICES = ("ORDERFC", "PAYMENTFC", "PRODUCTFC", "USERFC")
 
 
-def _infer_service_from_query(question: str, rewritten_query: str) -> str | None:
-    q = f"{question} {rewritten_query}".lower()
-    if any(k in q for k in ("login", "signin", "signup", "auth", "jwt", "user", "유저", "회원", "로그인", "인증")):
-        return "USERFC"
-    # Kafka 소비 측 중복 방지(완료 키 등)는 PRODUCTFC 컨슈머에 있음. HTTP 체크아웃 idempotency_token은 ORDERFC.
-    kafka_context = any(
-        k in q
-        for k in (
-            "kafka",
-            "카프카",
-            "consumer",
-            "producer",
-            "topic",
-            "토픽",
-            "stock.updated",
-            "stock.rollback",
-            "dlq",
-            "at-least-once",
-            "재처리",
-        )
-    )
-    idem_context = any(k in q for k in ("멱등", "멱등성", "idempotency", "idempotent", "dedup", "중복"))
-    if kafka_context and idem_context:
-        return "PRODUCTFC"
-    if any(k in q for k in ("checkout", "order", "주문", "장바구니", "idempotency", "멱등")):
-        return "ORDERFC"
-    if any(k in q for k in ("payment", "결제", "invoice", "paid", "refund", "환불")):
-        return "PAYMENTFC"
-    if any(k in q for k in ("product", "catalog", "inventory", "stock", "상품", "재고")):
-        return "PRODUCTFC"
-    return None
-
-
 def _merge_dedup_chunks(chunks: list, limit: int = 5) -> list:
     merged: list = []
     seen_ids: set[str] = set()
@@ -383,7 +350,7 @@ def ask_question(
             used_second_pass = True
 
     # In ALL mode, broaden recovery path when first retrieval misses.
-    if not evidence and service is None:
+    if not evidence and effective_service is None:
         if full_chunks is None:
             full_chunks = list_chunks(settings)
         sweep_hits: list = []
