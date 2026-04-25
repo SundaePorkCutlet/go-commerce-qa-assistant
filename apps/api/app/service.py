@@ -20,6 +20,26 @@ def _infer_service_from_query(question: str, rewritten_query: str) -> str | None
     q = f"{question} {rewritten_query}".lower()
     if any(k in q for k in ("login", "signin", "signup", "auth", "jwt", "user", "유저", "회원", "로그인", "인증")):
         return "USERFC"
+    # Kafka 소비 측 중복 방지(완료 키 등)는 PRODUCTFC 컨슈머에 있음. HTTP 체크아웃 idempotency_token은 ORDERFC.
+    kafka_context = any(
+        k in q
+        for k in (
+            "kafka",
+            "카프카",
+            "consumer",
+            "producer",
+            "topic",
+            "토픽",
+            "stock.updated",
+            "stock.rollback",
+            "dlq",
+            "at-least-once",
+            "재처리",
+        )
+    )
+    idem_context = any(k in q for k in ("멱등", "멱등성", "idempotency", "idempotent", "dedup", "중복"))
+    if kafka_context and idem_context:
+        return "PRODUCTFC"
     if any(k in q for k in ("checkout", "order", "주문", "장바구니", "idempotency", "멱등")):
         return "ORDERFC"
     if any(k in q for k in ("payment", "결제", "invoice", "paid", "refund", "환불")):
@@ -274,7 +294,9 @@ def ask_question(
     core_logic_mode = intent.mode == "core-logic"
     architecture_mode = intent.mode == "architecture"
     rewritten_query, _expanded_terms = expand_query(question, settings, service=service)
-    effective_service = service or _infer_service_from_query(question, rewritten_query)
+    normalized_service = (service or "").strip().upper()
+    # In ALL mode, never lock retrieval to a single service.
+    effective_service = None if normalized_service in {"", "ALL"} else normalized_service
     retrieval_query = rewritten_query
     if architecture_mode:
         retrieval_query = f"{rewritten_query} architecture overview component flow docs readme"
