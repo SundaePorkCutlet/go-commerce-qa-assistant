@@ -144,6 +144,12 @@ def _needs_second_pass(evidence: list, definition_mode: bool, architecture_mode:
     return noisy_count >= max(1, len(evidence) // 2)
 
 
+def _has_core_logic_pair(evidence: list) -> bool:
+    has_handler = any("/handler/" in c.path.lower() for c in evidence)
+    has_core = any(("/usecase/" in c.path.lower()) or ("/service/" in c.path.lower()) for c in evidence)
+    return has_handler and has_core
+
+
 def _symbol_priority_matches(chunks: list, symbols: set[str], service: str | None, path_prefix: str | None, limit: int = 5) -> list:
     if not symbols:
         return []
@@ -375,6 +381,9 @@ def ask_question(
         used_second_pass=used_second_pass,
         used_all_sweep=used_all_sweep,
     )
+    # Guardrail: core-logic answers without handler+usecase/service pair must not look "high confidence".
+    if core_logic_mode and not _has_core_logic_pair(evidence):
+        confidence = "low"
 
     primary_symbol = next(iter(symbol_queries), None)
     answer = build_answer(
