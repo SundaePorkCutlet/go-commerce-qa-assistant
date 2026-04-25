@@ -64,8 +64,8 @@ export default function App() {
   const placeholders = useMemo(
     () => [
       "예) ORDERFC에서 CheckOutOrder는 어디 구현돼?",
-      "예) ORDERFC 핵심 로직 흐름은 어디서 하나요?",
-      "예) 멱등성 검증은 어디서 처리되나요?",
+      "예) Kafka 멱등성은 어떤 코드로 처리했나요?",
+      "예) 결제 실패 시 재고 롤백은 어디서 발행되나요?",
     ],
     []
   );
