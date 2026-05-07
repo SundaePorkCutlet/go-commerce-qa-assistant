@@ -31,16 +31,24 @@ def _has_core_logic_pair(evidence: list[Chunk]) -> bool:
     has_core = any(
         ("/usecase/" in c.path.lower()) or ("/service/" in c.path.lower()) for c in evidence
     )
-    return has_handler and has_core
+    has_message = any(
+        ("/kafka/" in c.path.lower())
+        or ("outbox" in c.path.lower())
+        or ("consumer" in c.path.lower())
+        or ("publisher" in c.path.lower())
+        for c in evidence
+    )
+    has_repository = any("/repository/" in c.path.lower() or "repository" in c.path.lower() for c in evidence)
+    return (has_handler and has_core) or (has_message and (has_core or has_repository))
 
 
 def _build_core_logic_insufficient_answer() -> str:
     return (
         "답변:\n"
         "핵심 로직 흐름을 확정하기 위한 근거가 부족합니다.\n"
-        "현재 근거에서 handler 진입점과 usecase/service 핵심 로직 근거를 동시에 확보하지 못했습니다.\n\n"
+        "현재 근거에서 진입점과 핵심 처리 계층의 조합을 충분히 확보하지 못했습니다.\n\n"
         "근거:\n"
-        "- handler + usecase/service 페어 근거가 필요합니다."
+        "- HTTP 흐름은 handler + usecase/service, 이벤트 흐름은 kafka/worker + repository/service 근거가 필요합니다."
     )
 
 
@@ -251,8 +259,9 @@ def _build_llm_answer(
     elif core_logic_mode:
         extra_rules = (
             "- 이 질문은 핵심 처리 흐름 질의다.\n"
-            "- handler는 진입점, 핵심 비즈니스 로직은 usecase/service로 구분해서 설명하라.\n"
-            "- 가능하면 두 계층의 근거 파일을 함께 제시하라.\n"
+            "- HTTP 요청 흐름이면 handler 진입점과 usecase/service 핵심 로직을 구분해서 설명하라.\n"
+            "- Kafka/Outbox/worker 흐름이면 저장 repository와 발행 worker/producer를 구분해서 설명하라.\n"
+            "- 가능하면 두 계층 이상의 근거 파일을 함께 제시하라.\n"
         )
     elif architecture_mode:
         extra_rules = (
@@ -357,4 +366,3 @@ def build_answer(
         target_symbol,
         confidence,
     )
-

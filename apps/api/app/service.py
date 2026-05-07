@@ -147,7 +147,15 @@ def _needs_second_pass(evidence: list, definition_mode: bool, architecture_mode:
 def _has_core_logic_pair(evidence: list) -> bool:
     has_handler = any("/handler/" in c.path.lower() for c in evidence)
     has_core = any(("/usecase/" in c.path.lower()) or ("/service/" in c.path.lower()) for c in evidence)
-    return has_handler and has_core
+    has_message = any(
+        ("/kafka/" in c.path.lower())
+        or ("outbox" in c.path.lower())
+        or ("consumer" in c.path.lower())
+        or ("publisher" in c.path.lower())
+        for c in evidence
+    )
+    has_repository = any("/repository/" in c.path.lower() or "repository" in c.path.lower() for c in evidence)
+    return (has_handler and has_core) or (has_message and (has_core or has_repository))
 
 
 def _symbol_priority_matches(chunks: list, symbols: set[str], service: str | None, path_prefix: str | None, limit: int = 5) -> list:
