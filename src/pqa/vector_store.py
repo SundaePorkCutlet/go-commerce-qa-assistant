@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 import os
 import re
@@ -10,6 +11,11 @@ from chromadb.api.models.Collection import Collection
 
 from pqa.config import Settings
 from pqa.models import Chunk
+
+
+def _stable_token_index(token: str, dim: int) -> int:
+    digest = hashlib.sha256(token.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], byteorder="big") % dim
 
 
 def _prepare_local_cache(settings: Settings) -> None:
@@ -42,7 +48,7 @@ class LocalHashEmbeddingFunction:
                 vectors.append(np.array(vec, dtype=np.float32))
                 continue
             for tok in tokens:
-                idx = hash(tok) % self.dim
+                idx = _stable_token_index(tok, self.dim)
                 vec[idx] += 1.0
             norm = sum(v * v for v in vec) ** 0.5
             if norm > 0:
@@ -144,4 +150,3 @@ def list_chunks(settings: Settings, limit: int = 5000) -> list[Chunk]:
             )
         )
     return chunks
-

@@ -45,9 +45,9 @@ Code-aware RAG assistant for the `go-commerce` repository.
 
 From `tools/project-qa-assistant`:
 
-1. Start app stack:
-   - `docker compose -f docker-compose.app.yml up -d --build`
-2. Build index into Chroma:
+1. Build and start app stack:
+   - `docker compose -f docker-compose.app.yml up -d --build chroma api web`
+2. Rebuild index into Chroma:
    - `docker compose -f docker-compose.app.yml --profile tools run --rm indexer`
 3. Open browser:
    - `http://localhost/`
@@ -73,6 +73,8 @@ Stop:
 - Private files like `INTERVIEW_PREP*` are excluded by default.
 - Answers must include evidence paths.
 - If confidence is low, assistant should say so explicitly.
+- Public API traffic is bounded by CORS allowlist, request length validation, per-IP rate limit,
+  and request timeout.
 
 ## ChromaDB (Vector Store)
 
@@ -80,6 +82,9 @@ This project now runs in **Chroma-only mode** (no JSONL fallback).
 Default mode uses local persistent Chroma at `data/index/chroma`.
 ONNX embedding cache is stored under `data/cache` (workspace-local).
 Current MVP uses a local hash embedding function by default (offline, deterministic).
+Token-to-dimension mapping uses a stable SHA-256 hash, not Python's process-randomized `hash()`.
+Because embedding coordinates are part of persisted Chroma data, rebuild the index after changing
+the embedding function or indexed corpus.
 
 - Index with Chroma upsert:
   - `python scripts/index_once.py`
@@ -105,10 +110,17 @@ Intent router env (rule + optional LLM classifier):
 - `INTENT_ROUTER_MODEL=gpt-4o-mini`
 - `INTENT_ROUTER_MIN_CONFIDENCE=0.65`
 
+Public API guardrail env:
+- `API_ALLOWED_ORIGINS=http://localhost:3001,http://localhost:5173,https://hongjunho.xyz,https://www.hongjunho.xyz`
+- `API_RATE_LIMIT_PER_MINUTE=20`
+- `API_REQUEST_TIMEOUT_SECONDS=30`
+
 ## Deployment Notes (EC2 / Domain)
 
 - Web and API are served through a single Nginx entrypoint in `apps/web/nginx.conf`.
 - Browser requests use the same origin and call `/api/v1/ask`; nginx proxies this to internal `api:8001`.
+- GitHub Actions deploy rebuilds web/API/indexer images, starts Chroma, runs the indexer, then starts
+  API/Web. This keeps deployed answers aligned with the latest repository state.
 - Recommended security group exposure:
   - open `80/tcp` to public
   - keep `8001` and `8000` private (not exposed externally)
@@ -154,13 +166,31 @@ If you want a separate Chroma server via Docker:
 4. BM25 재정렬
 - 1차 후보(유사도) 이후 BM25로 재정렬해서 질문 단어 일치도를 반영
 
-5. 구현 질의 하드 룰
+5. Query rewrite + intent routing
+- 한국어 질문을 코드 검색 키워드로 확장(rule-first, optional LLM rewrite)
+- 질문 의도를 `definition`, `core-logic`, `architecture`, `general`로 분류
+- 의도에 따라 심볼 우선 검색, 아키텍처 문서 보강, 근거 후보 확장 전략을 다르게 적용
+
+6. 구현 질의 하드 룰
 - "어디/구현/검증" 성격 질문이면 코드 파일 중심으로만 답변
 
-6. 사용자 강제 필터
+7. 사용자 강제 필터
 - `--service`, `--path-prefix` 옵션으로 범위를 강제해 오답 문맥 유입 차단
 
-면접에서는 "고정 길이 chunk 한계를 심볼 단위 청킹과 symbol-aware 재정렬로 개선했다"라고 설명하면 좋다.
+면접에서는 "고정 길이 chunk 한계를 심볼 단위 청킹, query rewrite, intent routing,
+symbol-aware 재정렬로 개선했다"라고 설명하면 좋다.
+
+## Accuracy Evaluation Notes
+
+현재 정확도 개선은 retrieval/reranking 설계와 단위 테스트 중심이다. 실무 운영 수준으로 더
+강화하려면 `eval/questions.yaml`의 대표 질문마다 기대 근거 파일/라인을 지정하고, 변경 전후
+retrieval hit rate와 답변 근거 포함 여부를 회귀 테스트로 측정하는 방식이 필요하다.
+
+이 프로젝트의 현재 범위:
+- 적용됨: symbol chunking, metadata line range, query rewrite, intent routing, BM25 reranking,
+  confidence-aware answer, stable hash embedding
+- 다음 단계: golden question set, expected evidence path/line, stale-index SHA check,
+  hallucination regression, answer feedback logging
 
 ## ALL Mode Quality Improvements
 

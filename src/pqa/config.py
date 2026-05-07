@@ -46,6 +46,9 @@ class Settings(BaseModel):
     enable_intent_router: bool = True
     intent_router_model: str = "gpt-4o-mini"
     intent_router_min_confidence: float = 0.65
+    api_allowed_origins: list[str] = Field(default_factory=list)
+    api_rate_limit_per_minute: int = 20
+    api_request_timeout_seconds: float = 30.0
 
     @staticmethod
     def load() -> "Settings":
@@ -80,5 +83,15 @@ class Settings(BaseModel):
             in {"1", "true", "yes", "on"},
             intent_router_model=os.getenv("INTENT_ROUTER_MODEL", "gpt-4o-mini"),
             intent_router_min_confidence=float(os.getenv("INTENT_ROUTER_MIN_CONFIDENCE", "0.65")),
+            api_allowed_origins=[
+                origin.strip()
+                for origin in os.getenv(
+                    "API_ALLOWED_ORIGINS",
+                    "http://localhost:3001,http://localhost:5173,https://hongjunho.xyz,"
+                    "https://www.hongjunho.xyz",
+                ).split(",")
+                if origin.strip()
+            ],
+            api_rate_limit_per_minute=int(os.getenv("API_RATE_LIMIT_PER_MINUTE", "20")),
+            api_request_timeout_seconds=float(os.getenv("API_REQUEST_TIMEOUT_SECONDS", "30")),
         )
-

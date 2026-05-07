@@ -24,11 +24,11 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
-            docker compose -f docker-compose.app.yml build web api
-            docker compose -f docker-compose.app.yml up -d
+            docker compose -f docker-compose.app.yml build web api indexer
+            docker compose -f docker-compose.app.yml up -d chroma
 
-            # Run indexer only when corpus changes are expected.
-            # docker compose -f docker-compose.app.yml --profile tools run --rm indexer
+            docker compose -f docker-compose.app.yml --profile tools run --rm indexer
+            docker compose -f docker-compose.app.yml up -d api web
 
             docker compose -f docker-compose.app.yml ps
             curl -fsS http://localhost/ > /dev/null
