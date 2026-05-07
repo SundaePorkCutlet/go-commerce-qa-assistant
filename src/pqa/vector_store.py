@@ -7,6 +7,7 @@ import re
 
 import chromadb
 import numpy as np
+from chromadb.api import ClientAPI
 from chromadb.api.models.Collection import Collection
 
 from pqa.config import Settings
@@ -60,14 +61,29 @@ class LocalHashEmbeddingFunction:
         return self.__call__(input)
 
 
-def _get_collection(settings: Settings) -> Collection:
+def _get_client(settings: Settings) -> ClientAPI:
     _prepare_local_cache(settings)
     if settings.chroma_mode == "http":
-        client = chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port)
-    else:
-        settings.chroma_path.mkdir(parents=True, exist_ok=True)
-        client = chromadb.PersistentClient(path=str(settings.chroma_path))
+        return chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port)
 
+    settings.chroma_path.mkdir(parents=True, exist_ok=True)
+    return chromadb.PersistentClient(path=str(settings.chroma_path))
+
+
+def _get_collection(settings: Settings) -> Collection:
+    client = _get_client(settings)
+    return client.get_or_create_collection(
+        name=settings.chroma_collection,
+        embedding_function=LocalHashEmbeddingFunction(),
+    )
+
+
+def reset_collection(settings: Settings) -> Collection:
+    client = _get_client(settings)
+    try:
+        client.delete_collection(settings.chroma_collection)
+    except ValueError:
+        pass
     return client.get_or_create_collection(
         name=settings.chroma_collection,
         embedding_function=LocalHashEmbeddingFunction(),
@@ -90,7 +106,7 @@ def _to_metadata(chunk: Chunk) -> dict[str, Any]:
 
 
 def upsert_chunks(settings: Settings, chunks: list[Chunk], batch_size: int = 200) -> None:
-    collection = _get_collection(settings)
+    collection = reset_collection(settings)
     for i in range(0, len(chunks), batch_size):
         batch = chunks[i : i + batch_size]
         collection.upsert(

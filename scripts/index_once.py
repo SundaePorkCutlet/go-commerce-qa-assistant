@@ -19,11 +19,10 @@ def main() -> None:
     print(f"[green]Done[/green] - chunks: {len(chunks)}")
     upsert_chunks(settings, chunks)
     print(
-        "[green]Chroma upsert done[/green]: "
+        "[green]Chroma rebuild done[/green]: "
         f"{settings.chroma_collection} ({settings.chroma_mode})"
     )
 
 
 if __name__ == "__main__":
     main()
-
