@@ -17,7 +17,7 @@ DEFINITION_HINT_RE = re.compile(
     re.IGNORECASE,
 )
 CORE_LOGIC_HINT_RE = re.compile(
-    r"(핵심\s*로직|실제\s*처리|검증|상태\s*변경|흐름|어디서\s*하나요)",
+    r"(핵심\s*로직|실제\s*처리|검증|상태\s*변경|흐름|어디서|누가|저장|발행|publish|outbox)",
     re.IGNORECASE,
 )
 

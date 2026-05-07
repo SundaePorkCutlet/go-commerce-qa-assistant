@@ -27,7 +27,31 @@ RULE_MAP: dict[str, list[str]] = {
     "재시도": ["retry", "backoff", "jitter", "timeout", "transient", "failure"],
     "큐": ["queue", "kafka", "topic", "consumer", "producer", "event", "message"],
     "이벤트": ["event", "publish", "subscribe", "producer", "consumer", "kafka"],
-    "아웃박스": ["outbox", "transactional-outbox", "event-publish", "relay", "dedup"],
+    "아웃박스": [
+        "outbox",
+        "transactional-outbox",
+        "order_outbox_events",
+        "OrderOutboxPublisher",
+        "SaveOrderAndOrderDetailWithOutbox",
+        "InsertOrderOutboxEventsTx",
+        "GetPendingOutboxEvents",
+        "MarkOutboxEventPublished",
+        "publishPending",
+        "order.created",
+        "ORDERFC",
+    ],
+    "outbox": [
+        "transactional-outbox",
+        "order_outbox_events",
+        "OrderOutboxPublisher",
+        "SaveOrderAndOrderDetailWithOutbox",
+        "InsertOrderOutboxEventsTx",
+        "GetPendingOutboxEvents",
+        "MarkOutboxEventPublished",
+        "publishPending",
+        "order.created",
+        "ORDERFC",
+    ],
     "사가": ["saga", "orchestration", "choreography", "compensation", "distributed-transaction"],
     "redis": ["redis", "cache", "ttl", "expire", "invalidation", "key"],
     "캐시": ["cache", "redis", "ttl", "invalidate", "warming", "hit-rate"],
@@ -49,8 +73,9 @@ def _tokenize(text: str) -> list[str]:
 
 def _rule_expand(question: str) -> list[str]:
     expanded: list[str] = []
+    normalized_question = question.lower()
     for key, terms in RULE_MAP.items():
-        if key in question:
+        if key.lower() in normalized_question:
             expanded.extend(terms)
     return expanded
 
