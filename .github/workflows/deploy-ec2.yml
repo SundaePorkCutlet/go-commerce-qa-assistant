@@ -26,6 +26,10 @@ jobs:
             git reset --hard origin/master
             git submodule sync --recursive
             git submodule update --init --recursive
+            for service in ORDERFC PRODUCTFC PAYMENTFC USERFC; do
+              git -C "$service" fetch origin
+              git -C "$service" reset --hard origin/main
+            done
 
             cd ~/go-commerce/tools/project-qa-assistant
             git fetch origin
