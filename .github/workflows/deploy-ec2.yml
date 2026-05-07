@@ -31,4 +31,4 @@ jobs:
             docker compose -f docker-compose.app.yml up -d api web
 
             docker compose -f docker-compose.app.yml ps
-            curl -fsS http://localhost/ > /dev/null
+            curl -fsS http://localhost:3001/ > /dev/null
