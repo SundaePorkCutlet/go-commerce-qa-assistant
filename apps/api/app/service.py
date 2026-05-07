@@ -324,6 +324,15 @@ def ask_question(
         )
         if symbol_hits and not definition_mode:
             evidence = symbol_hits
+        full_symbol_hits = search(
+            rewritten_query,
+            full_chunks,
+            top_k=8,
+            service_filter=effective_service,
+            path_prefix=path_prefix,
+        )
+        if full_symbol_hits and not definition_mode:
+            evidence = _merge_dedup_chunks(full_symbol_hits + evidence, limit=8)
     if not evidence:
         raw = candidates
         if effective_service:

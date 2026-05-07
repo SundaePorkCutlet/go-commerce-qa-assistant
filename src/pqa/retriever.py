@@ -278,13 +278,23 @@ def search(
             score *= 1.5
 
         # Strong boost when question includes implementation keywords.
-        impl_keywords = {"idempotency", "token", "kafka", "tracing", "grpc", "audit", "repository"}
+        impl_keywords = {
+            "idempotency",
+            "token",
+            "kafka",
+            "tracing",
+            "grpc",
+            "audit",
+            "repository",
+            "outbox",
+            "transactional-outbox",
+        }
         if qtokens & impl_keywords:
             if suffix == ".go":
                 score *= 1.2
 
         matched_key_terms = 0
-        for key in ("idempotency", "repository", "usecase", "handler"):
+        for key in ("idempotency", "repository", "usecase", "handler", "outbox"):
             if key in qtokens and (key in text_lower or key in path_lower):
                 matched_key_terms += 1
         if matched_key_terms > 0:
@@ -308,4 +318,3 @@ def search(
     scored.sort(key=lambda x: x[0], reverse=True)
     candidate_pool = scored[: max(top_k * 6, 20)]
     return bm25_rerank(qtokens, candidate_pool, top_k=top_k)
-
