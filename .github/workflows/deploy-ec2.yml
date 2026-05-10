@@ -36,16 +36,15 @@ jobs:
             git reset --hard origin/main
 
             cd ~/go-commerce
-            docker run --rm \
-              -v "$PWD":/workspace \
-              -w /workspace \
-              -e VITE_BASE_PATH=/go-commerce/ \
-              node:20-alpine \
-              sh -lc "npm ci --prefix frontend && npm --prefix frontend run build"
+            docker build \
+              --build-arg VITE_BASE_PATH=/go-commerce/ \
+              -t go-commerce-portfolio:deploy \
+              ./frontend
+            portfolio_container="$(docker create go-commerce-portfolio:deploy)"
             rm -rf tools/project-qa-assistant/apps/web/public/go-commerce
             mkdir -p tools/project-qa-assistant/apps/web/public
-            cp -R frontend/dist tools/project-qa-assistant/apps/web/public/go-commerce
-            rm -rf frontend/node_modules
+            docker cp "$portfolio_container":/usr/share/nginx/html tools/project-qa-assistant/apps/web/public/go-commerce
+            docker rm "$portfolio_container"
 
             cd ~/go-commerce/tools/project-qa-assistant
             docker compose -f docker-compose.app.yml build web api indexer
