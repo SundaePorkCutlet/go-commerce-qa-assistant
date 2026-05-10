@@ -36,11 +36,16 @@ jobs:
             git reset --hard origin/main
 
             cd ~/go-commerce
-            npm ci --prefix frontend
-            VITE_BASE_PATH=/go-commerce/ npm --prefix frontend run build
+            docker run --rm \
+              -v "$PWD":/workspace \
+              -w /workspace \
+              -e VITE_BASE_PATH=/go-commerce/ \
+              node:20-alpine \
+              sh -lc "npm ci --prefix frontend && npm --prefix frontend run build"
             rm -rf tools/project-qa-assistant/apps/web/public/go-commerce
             mkdir -p tools/project-qa-assistant/apps/web/public
             cp -R frontend/dist tools/project-qa-assistant/apps/web/public/go-commerce
+            rm -rf frontend/node_modules
 
             cd ~/go-commerce/tools/project-qa-assistant
             docker compose -f docker-compose.app.yml build web api indexer
@@ -51,3 +56,4 @@ jobs:
 
             docker compose -f docker-compose.app.yml ps
             curl -fsS http://localhost:3001/ > /dev/null
+            curl -fsS http://localhost:3001/go-commerce/ > /dev/null
