@@ -35,6 +35,14 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
+            cd ~/go-commerce
+            npm ci --prefix frontend
+            VITE_BASE_PATH=/go-commerce/ npm --prefix frontend run build
+            rm -rf tools/project-qa-assistant/apps/web/public/go-commerce
+            mkdir -p tools/project-qa-assistant/apps/web/public
+            cp -R frontend/dist tools/project-qa-assistant/apps/web/public/go-commerce
+
+            cd ~/go-commerce/tools/project-qa-assistant
             docker compose -f docker-compose.app.yml build web api indexer
             docker compose -f docker-compose.app.yml up -d chroma
 

@@ -78,6 +78,12 @@ body {
   box-shadow: 0 10px 22px rgba(30, 41, 59, 0.28);
 }
 
+.doc-btn-showcase {
+  color: #06121f;
+  background: linear-gradient(135deg, #67e8f9, #34d399);
+  box-shadow: 0 10px 24px rgba(20, 184, 166, 0.28);
+}
+
 @media (max-width: 900px) {
   .hero {
     padding-right: 0;

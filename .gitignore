@@ -10,4 +10,5 @@ data/index/
 data/cache/
 apps/web/node_modules/
 apps/web/dist/
+apps/web/public/go-commerce/
 apps/web/public/docs/*.pdf

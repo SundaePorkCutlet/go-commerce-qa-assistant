@@ -17,6 +17,7 @@ const PDF_ASSETS = {
   },
 };
 const GITHUB_URL = "https://github.com/SundaePorkCutlet/go-commerce";
+const ENGINEERING_PORTFOLIO_URL = "/go-commerce/";
 
 function useTypingLines(lines, speedMs = 30, lineDelayMs = 350, replayDelayMs = 10000) {
   const [currentLine, setCurrentLine] = useState(0);
@@ -120,6 +121,12 @@ export default function App() {
           </p>
         ) : null}
         <div className="hero-actions">
+          <a
+            href={ENGINEERING_PORTFOLIO_URL}
+            className="doc-btn doc-btn-showcase"
+          >
+            프로젝트 보기
+          </a>
           <a
             href={GITHUB_URL}
             target="_blank"
