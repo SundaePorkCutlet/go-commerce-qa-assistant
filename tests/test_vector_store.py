@@ -3,7 +3,10 @@ import subprocess
 import sys
 
 import numpy as np
+from chromadb.errors import NotFoundError
 
+from pqa.config import Settings
+from pqa import vector_store
 from pqa.vector_store import LocalHashEmbeddingFunction, _stable_token_index
 
 
@@ -28,3 +31,18 @@ def test_local_hash_embedding_maps_same_token_to_same_dimension() -> None:
 
     assert np.array_equal(first, second)
     assert first[idx] > 0
+
+
+def test_reset_collection_creates_collection_when_it_does_not_exist(monkeypatch) -> None:
+    expected_collection = object()
+
+    class MissingCollectionClient:
+        def delete_collection(self, _name: str) -> None:
+            raise NotFoundError("collection does not exist")
+
+        def get_or_create_collection(self, **_kwargs):
+            return expected_collection
+
+    monkeypatch.setattr(vector_store, "_get_client", lambda _settings: MissingCollectionClient())
+
+    assert vector_store.reset_collection(Settings()) is expected_collection

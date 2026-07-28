@@ -9,6 +9,7 @@ import chromadb
 import numpy as np
 from chromadb.api import ClientAPI
 from chromadb.api.models.Collection import Collection
+from chromadb.errors import NotFoundError
 
 from pqa.config import Settings
 from pqa.models import Chunk
@@ -82,7 +83,7 @@ def reset_collection(settings: Settings) -> Collection:
     client = _get_client(settings)
     try:
         client.delete_collection(settings.chroma_collection)
-    except ValueError:
+    except (NotFoundError, ValueError):
         pass
     return client.get_or_create_collection(
         name=settings.chroma_collection,
